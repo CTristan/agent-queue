@@ -17,6 +17,7 @@ defmodule AgentQueueWeb.DiscoveryHook do
       |> assign(:discoverer_status, AgentQueue.Discoverer.status())
       |> assign(:discovery_logs, [])
       |> assign(:discovery_logs_visible, false)
+      |> assign(:discovery_debug_mode, AgentQueue.Settings.get_discovery_debug_mode())
 
     if connected?(socket) do
       AgentQueue.Discoverer.subscribe_status()
@@ -30,12 +31,21 @@ defmodule AgentQueueWeb.DiscoveryHook do
           {:cont, assign(socket, :discoverer_status, status)}
 
         {:discoverer_log, entry}, socket ->
-          logs = socket.assigns.discovery_logs ++ [entry]
-          logs = Enum.take(logs, -@max_log_lines)
-          {:halt, assign(socket, :discovery_logs, logs)}
+          if entry.level == :debug and not socket.assigns.discovery_debug_mode do
+            {:halt, socket}
+          else
+            logs = socket.assigns.discovery_logs ++ [entry]
+            logs = Enum.take(logs, -@max_log_lines)
+            {:halt, assign(socket, :discovery_logs, logs)}
+          end
 
         :clear_logs, socket ->
-          {:halt, assign(socket, :discovery_logs, [])}
+          socket =
+            socket
+            |> assign(:discovery_logs, [])
+            |> assign(:discovery_debug_mode, AgentQueue.Settings.get_discovery_debug_mode())
+
+          {:halt, socket}
 
         _, socket ->
           {:cont, socket}

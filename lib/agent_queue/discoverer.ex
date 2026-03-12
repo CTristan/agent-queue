@@ -180,6 +180,7 @@ defmodule AgentQueue.Discoverer do
   @impl true
   def handle_info(:scan_projects, state) do
     new_state = %{state | stage: "scanning_projects"}
+    broadcast_log(:debug, "Stage: scanning_projects")
     broadcast_status(new_state)
 
     try do
@@ -202,6 +203,7 @@ defmodule AgentQueue.Discoverer do
   @impl true
   def handle_info(:discover_tasks, state) do
     new_state = %{state | stage: "discovering_tasks"}
+    broadcast_log(:debug, "Stage: discovering_tasks")
     broadcast_status(new_state)
 
     {:ok, pid} =

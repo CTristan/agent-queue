@@ -74,11 +74,42 @@
               <% end %>
             </div>
           </div>
+          <div class="divider"></div>
+          
+<!-- Debug Mode -->
+          <div class="form-control">
+            <label class="label cursor-pointer justify-start gap-3">
+              <input
+                type="checkbox"
+                name="settings[discovery_debug_mode]"
+                value="true"
+                checked={@form_params["discovery_debug_mode"] == "true"}
+                class="toggle toggle-primary"
+              />
+              <div>
+                <span class="label-text font-medium">Debug Mode</span>
+                <p class="text-sm opacity-70 mt-1">
+                  Show debug-level messages in discovery terminal logs. Useful for troubleshooting discovery issues.
+                </p>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
       
 <!-- Save Button -->
-      <div class="flex justify-end gap-2">
+      <div class="flex justify-end items-center gap-3">
+        <span
+          :if={@save_message}
+          id="save-message"
+          class={[
+            "text-sm font-medium animate-[fade-out_1s_ease-in_3s_forwards]",
+            @save_message_kind == :info && "text-success",
+            @save_message_kind == :error && "text-error"
+          ]}
+        >
+          {@save_message}
+        </span>
         <.link navigate={~p"/projects"} class="btn btn-ghost">
           Cancel
         </.link>

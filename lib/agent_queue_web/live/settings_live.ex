@@ -15,10 +15,12 @@ defmodule AgentQueueWeb.SettingsLive do
       |> assign(:settings, settings)
       |> assign(:form_params, %{
         "discovery_max_projects" => settings["discovery_max_projects"],
-        "discovery_priority_mode" => settings["discovery_priority_mode"]
+        "discovery_priority_mode" => settings["discovery_priority_mode"],
+        "discovery_debug_mode" => settings["discovery_debug_mode"]
       })
       |> assign(:changeset, nil)
-      |> assign(:success_message, nil)
+      |> assign(:save_message, nil)
+      |> assign(:save_message_kind, nil)
 
     {:ok, socket}
   end
@@ -42,20 +44,42 @@ defmodule AgentQueueWeb.SettingsLive do
           {:ok, _} =
             Settings.update_setting("discovery_priority_mode", params["discovery_priority_mode"])
 
+          debug_mode = if params["discovery_debug_mode"] == "true", do: "true", else: "false"
+          {:ok, _} = Settings.update_setting("discovery_debug_mode", debug_mode)
+
+          settings = Settings.all_settings_with_defaults()
+
           socket =
             socket
-            |> put_flash(:info, "Settings saved successfully")
-            |> push_navigate(to: ~p"/settings")
+            |> assign(:settings, settings)
+            |> assign(:form_params, %{
+              "discovery_max_projects" => params["discovery_max_projects"],
+              "discovery_priority_mode" => params["discovery_priority_mode"],
+              "discovery_debug_mode" => debug_mode
+            })
+            |> assign(:save_message, "Settings saved successfully")
+            |> assign(:save_message_kind, :info)
 
           {:noreply, socket}
         else
-          {:noreply, put_flash(socket, :error, "Invalid priority mode")}
+          socket =
+            socket
+            |> assign(:save_message, "Invalid priority mode")
+            |> assign(:save_message_kind, :error)
+
+          {:noreply, socket}
         end
 
       _ ->
-        {:noreply, put_flash(socket, :error, "Max projects must be a positive integer")}
+        socket =
+          socket
+          |> assign(:save_message, "Max projects must be a positive integer")
+          |> assign(:save_message_kind, :error)
+
+        {:noreply, socket}
     end
   end
+
 
   defp priority_mode_label("alphabetical"), do: "Alphabetical (A-Z)"
   defp priority_mode_label("most_recently_modified"), do: "Most Recently Modified"

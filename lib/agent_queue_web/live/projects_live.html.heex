@@ -90,50 +90,53 @@
             Cancel
           </button>
         </div>
-        <%= if length(@discovery_logs) > 0 do %>
-          <div class="mt-2">
-            <button
-              phx-click="toggle-discovery-logs"
-              class="btn btn-xs btn-ghost gap-1"
+      </div>
+    </div>
+  <% end %>
+
+  <%= if length(@discovery_logs) > 0 do %>
+    <div class="card bg-base-100 shadow-sm mb-4">
+      <div class="card-body py-3">
+        <button
+          phx-click="toggle-discovery-logs"
+          class="btn btn-xs btn-ghost gap-1"
+        >
+          <%= if @discovery_logs_visible do %>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-3 w-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <%= if @discovery_logs_visible do %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M5 15l7-7 7 7"
-                  />
-                </svg>
-                Hide Logs
-              <% else %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-                Show Logs
-              <% end %>
-              <span class="badge badge-xs badge-info">{length(@discovery_logs)}</span>
-            </button>
-          </div>
-        <% end %>
-        <%= if @discovery_logs_visible and length(@discovery_logs) > 0 do %>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 15l7-7 7 7"
+              />
+            </svg>
+            Hide Logs
+          <% else %>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-3 w-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+            Show Logs
+          <% end %>
+          <span class="badge badge-xs badge-info">{length(@discovery_logs)}</span>
+        </button>
+        <%= if @discovery_logs_visible do %>
           <div
             id="discovery-log-panel"
             phx-hook="ScrollBottom"
@@ -144,7 +147,8 @@
                 "py-0.5",
                 entry.level == :error && "text-error",
                 entry.level == :warning && "text-warning",
-                entry.level == :info && "text-info"
+                entry.level == :info && "text-info",
+                entry.level == :debug && "opacity-50"
               ]}>
                 <span class="opacity-50">{Calendar.strftime(entry.timestamp, "%H:%M:%S")}</span>
                 <span class="font-semibold uppercase">[{entry.level}]</span>

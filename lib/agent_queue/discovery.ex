@@ -131,12 +131,27 @@ defmodule AgentQueue.Discovery do
           |> Enum.filter(fn name ->
             path = Path.join(dir, name)
 
-            File.dir?(path) and
-              not Enum.any?(skip_patterns, &String.starts_with?(name, &1)) and
-              git_project?(path)
+            is_dir = File.dir?(path)
+            is_skipped = Enum.any?(skip_patterns, &String.starts_with?(name, &1))
+            is_git = is_dir and not is_skipped and git_project?(path)
+
+            if is_dir and not is_skipped and not is_git do
+              broadcast_log(:debug, "Skipping #{name} (not a git project)")
+            end
+
+            if is_skipped do
+              broadcast_log(:debug, "Skipping #{name} (matches skip pattern)")
+            end
+
+            is_git
           end)
 
         # Apply priority ordering based on settings
+        broadcast_log(
+          :debug,
+          "Found #{length(projects)} candidate projects, applying priority ordering"
+        )
+
         projects = apply_priority_ordering(projects, dir)
 
         projects =
@@ -155,6 +170,7 @@ defmodule AgentQueue.Discovery do
 
   defp apply_priority_ordering(projects, base_dir) do
     priority_mode = Settings.get_discovery_priority_mode()
+    broadcast_log(:debug, "Priority mode: #{priority_mode}")
 
     case priority_mode do
       "alphabetical" ->
@@ -248,6 +264,8 @@ defmodule AgentQueue.Discovery do
 
     case run_pi_discovery(project.path, prompt) do
       {:ok, tasks} ->
+        broadcast_log(:debug, "Parsed #{length(tasks)} tasks from pi output for #{project.name}")
+
         created =
           Enum.map(tasks, &create_task_from_discovery(project, &1))
           |> Enum.count(fn {status, _} -> status == :ok end)

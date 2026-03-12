@@ -11,7 +11,8 @@ defmodule AgentQueue.Settings do
   # Default values for settings
   @defaults %{
     "discovery_max_projects" => "10",
-    "discovery_priority_mode" => "most_recently_modified"
+    "discovery_priority_mode" => "most_recently_modified",
+    "discovery_debug_mode" => "false"
   }
 
   @priority_modes [
@@ -94,6 +95,13 @@ defmodule AgentQueue.Settings do
   def get_discovery_priority_mode do
     mode = get("discovery_priority_mode", "most_recently_modified")
     if mode in @priority_modes, do: mode, else: "most_recently_modified"
+  end
+
+  @doc """
+  Gets the discovery debug mode setting.
+  """
+  def get_discovery_debug_mode do
+    get("discovery_debug_mode", "false") == "true"
   end
 
   @doc """
