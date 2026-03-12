@@ -1,4 +1,5 @@
 defmodule AgentQueueWeb.Router do
+  @moduledoc false
   use AgentQueueWeb, :router
 
   pipeline :browser do
@@ -17,10 +18,12 @@ defmodule AgentQueueWeb.Router do
   scope "/", AgentQueueWeb do
     pipe_through :browser
 
-    live "/", ProjectsLive, :index
-    live "/projects", ProjectsLive, :index
-    live "/tasks", TasksLive, :index
-    live "/settings", SettingsLive, :index
+    live_session :default, on_mount: [AgentQueueWeb.DiscoveryHook] do
+      live "/", ProjectsLive, :index
+      live "/projects", ProjectsLive, :index
+      live "/tasks", TasksLive, :index
+      live "/settings", SettingsLive, :index
+    end
   end
 
   # Other scopes may use custom stacks.

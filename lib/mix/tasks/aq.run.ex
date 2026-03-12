@@ -48,7 +48,7 @@ defmodule Mix.Tasks.Aq.Run do
   end
 
   defp parse_args(args) do
-    {opts, _args, _errors} =
+    {opts, _, _} =
       OptionParser.parse(args,
         strict: [
           budget: :integer,

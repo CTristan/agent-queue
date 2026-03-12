@@ -9,6 +9,8 @@ defmodule AgentQueueWeb.Layouts do
   """
   use AgentQueueWeb, :html
 
+  import AgentQueueWeb.FormatHelpers
+
   embed_templates "layouts/*"
 
   def app(assigns) do
@@ -39,6 +41,42 @@ defmodule AgentQueueWeb.Layouts do
         </ul>
       </div>
     </header>
+
+    <%= if assigns[:discoverer_status] && @discoverer_status.discovering do %>
+      <div class="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8 pt-4">
+        <div class="card bg-info/10">
+          <div class="card-body py-3">
+            <div class="flex items-center gap-3">
+              <span class="loading loading-spinner loading-sm"></span>
+              <div class="flex-1">
+                <h3 class="font-semibold">Discovery in Progress</h3>
+                <p class="text-sm opacity-70">
+                  {case @discoverer_status.stage do
+                    "scanning_projects" ->
+                      "Scanning for projects..."
+
+                    "discovering_tasks" ->
+                      if @discoverer_status.discovered_projects > 0 do
+                        "Discovering tasks... (found #{@discoverer_status.discovered_projects} project#{if @discoverer_status.discovered_projects != 1, do: "s"})"
+                      else
+                        "Discovering tasks..."
+                      end
+
+                    _ ->
+                      "Processing..."
+                  end}
+                  <%= if @discoverer_status.elapsed_seconds > 0 do %>
+                    <span class="badge badge-sm badge-info ml-2">
+                      {format_duration(@discoverer_status.elapsed_seconds)}
+                    </span>
+                  <% end %>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
 
     <main class="px-4 py-20 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-2xl space-y-4">

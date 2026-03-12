@@ -72,41 +72,8 @@
       </.link>
     </div>
   </div>
-  
-<!-- Discovery Status Panel -->
-  <%= if @discoverer_status.discovering do %>
-    <div class="card bg-info/10 mb-4">
-      <div class="card-body">
-        <div class="flex items-center gap-3">
-          <span class="loading loading-spinner loading-sm"></span>
-          <div class="flex-1">
-            <h3 class="font-semibold">Discovery in Progress</h3>
-            <p class="text-sm opacity-70">
-              {case @discoverer_status.stage do
-                "scanning_projects" ->
-                  "Scanning for projects..."
-                "discovering_tasks" ->
-                  if @discoverer_status.discovered_projects > 0 do
-                    "Discovering tasks... (found #{@discoverer_status.discovered_projects} project#{if @discoverer_status.discovered_projects != 1, do: "s"})"
-                  else
-                    "Discovering tasks..."
-                  end
-                _ ->
-                  "Processing..."
-              end}
-              <%= if @discoverer_status.elapsed_seconds > 0 do %>
-                <span class="badge badge-sm badge-info ml-2">
-                  {format_duration(@discoverer_status.elapsed_seconds)}
-                </span>
-              <% end %>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  <% end %>
-  
-<!-- Runner Control Panel -->
+
+  <!-- Runner Control Panel -->
   <div class="card bg-base-200 mb-6">
     <div class="card-body">
       <h2 class="card-title">Task Runner</h2>

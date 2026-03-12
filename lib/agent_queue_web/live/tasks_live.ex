@@ -5,31 +5,22 @@ defmodule AgentQueueWeb.TasksLive do
   use AgentQueueWeb, :live_view
 
   alias AgentQueue.{Runner, Tasks}
+  import AgentQueueWeb.FormatHelpers
 
   @impl true
-  def mount(_params, _session, socket) do
-    Tasks.list_tasks(order_by: {:asc, :priority})
-
+  def mount(_, _, socket) do
     socket =
       socket
       |> assign(:tasks, Tasks.list_tasks(order_by: {:asc, :priority}))
       |> assign(:filter_status, "all")
       |> assign(:filter_project_id, nil)
       |> assign(:runner_status, %{running: false, current_task: nil, budget_remaining_seconds: 0})
-      |> assign(:discoverer_status, %{
-        discovering: false,
-        stage: nil,
-        discovered_projects: 0,
-        discovered_tasks: 0,
-        elapsed_seconds: 0
-      })
       |> assign(:show_task_details, nil)
       |> assign(:task_budget_minutes, 60)
 
-    # Subscribe to runner and discoverer status updates
+    # Subscribe to runner and task status updates
     if connected?(socket) do
       Phoenix.PubSub.subscribe(AgentQueue.PubSub, "runner:status")
-      Phoenix.PubSub.subscribe(AgentQueue.PubSub, "discoverer:status")
       Phoenix.PubSub.subscribe(AgentQueue.PubSub, "tasks:update")
     end
 
@@ -39,7 +30,7 @@ defmodule AgentQueueWeb.TasksLive do
   @valid_statuses ~w(all proposed approved running review completed failed rejected)
 
   @impl true
-  def handle_params(params, _uri, socket) do
+  def handle_params(params, _, socket) do
     filter_status = Map.get(params, "status", "all")
     filter_status = if filter_status in @valid_statuses, do: filter_status, else: "all"
     filter_project_id = Map.get(params, "project_id")
@@ -56,11 +47,6 @@ defmodule AgentQueueWeb.TasksLive do
   @impl true
   def handle_info({:runner_status, status}, socket) do
     {:noreply, assign(socket, :runner_status, status)}
-  end
-
-  @impl true
-  def handle_info({:discoverer_status, status}, socket) do
-    {:noreply, assign(socket, :discoverer_status, status)}
   end
 
   @impl true
@@ -89,7 +75,7 @@ defmodule AgentQueueWeb.TasksLive do
         task = Tasks.get_task!(id)
 
         case Tasks.approve_task(task) do
-          {:ok, _task} ->
+          {:ok, _} ->
             broadcast_tasks_update()
 
             {:noreply,
@@ -99,7 +85,7 @@ defmodule AgentQueueWeb.TasksLive do
                list_tasks(socket.assigns.filter_status, socket.assigns.filter_project_id)
              )}
 
-          {:error, _changeset} ->
+          {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to approve task")}
         end
 
@@ -115,7 +101,7 @@ defmodule AgentQueueWeb.TasksLive do
         task = Tasks.get_task!(id)
 
         case Tasks.reject_task(task) do
-          {:ok, _task} ->
+          {:ok, _} ->
             broadcast_tasks_update()
 
             {:noreply,
@@ -125,7 +111,7 @@ defmodule AgentQueueWeb.TasksLive do
                list_tasks(socket.assigns.filter_status, socket.assigns.filter_project_id)
              )}
 
-          {:error, _changeset} ->
+          {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to reject task")}
         end
 
@@ -141,7 +127,7 @@ defmodule AgentQueueWeb.TasksLive do
         task = Tasks.get_task!(id)
 
         case Tasks.complete_task(task) do
-          {:ok, _task} ->
+          {:ok, _} ->
             broadcast_tasks_update()
 
             {:noreply,
@@ -151,7 +137,7 @@ defmodule AgentQueueWeb.TasksLive do
                list_tasks(socket.assigns.filter_status, socket.assigns.filter_project_id)
              )}
 
-          {:error, _changeset} ->
+          {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to complete task")}
         end
 
@@ -164,6 +150,7 @@ defmodule AgentQueueWeb.TasksLive do
   def handle_event("toggle_task_details", %{"id" => id_string}, socket) do
     case Integer.parse(id_string) do
       {id, ""} ->
+        # Validate task exists (raises if not found)
         Tasks.get_task_with_runs!(id)
 
         new_show =
@@ -177,13 +164,13 @@ defmodule AgentQueueWeb.TasksLive do
   end
 
   @impl true
-  def handle_event("start_run", _params, socket) do
+  def handle_event("start_run", _, socket) do
     Runner.start_run(budget_minutes: socket.assigns.task_budget_minutes)
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("stop_run", _params, socket) do
+  def handle_event("stop_run", _, socket) do
     Runner.stop_run()
     {:noreply, socket}
   end
@@ -200,7 +187,7 @@ defmodule AgentQueueWeb.TasksLive do
   end
 
   @impl true
-  def handle_event("start_discovery", _params, socket) do
+  def handle_event("start_discovery", _, socket) do
     AgentQueue.Discoverer.start_discovery()
     {:noreply, socket}
   end
@@ -244,9 +231,6 @@ defmodule AgentQueueWeb.TasksLive do
     Phoenix.PubSub.broadcast(AgentQueue.PubSub, "tasks:update", {:tasks_updated, :now})
   end
 
-  defp format_datetime(nil), do: "Never"
-  defp format_datetime(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-
   defp status_badge("proposed"), do: "badge-neutral"
   defp status_badge("approved"), do: "badge-info"
   defp status_badge("running"), do: "badge-accent"
@@ -264,17 +248,4 @@ defmodule AgentQueueWeb.TasksLive do
   defp status_icon("failed"), do: "✗"
   defp status_icon("rejected"), do: "🚫"
   defp status_icon(_), do: "?"
-
-  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
-    minutes = div(seconds, 60)
-    secs = rem(seconds, 60)
-
-    if minutes > 0 do
-      "#{minutes}m #{secs}s"
-    else
-      "#{secs}s"
-    end
-  end
-
-  defp format_duration(_), do: "N/A"
 end

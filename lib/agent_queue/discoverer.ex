@@ -68,7 +68,7 @@ defmodule AgentQueue.Discoverer do
   end
 
   @impl true
-  def handle_call(:status, _from, state) do
+  def handle_call(:status, _, state) do
     {:reply,
      %{
        discovering: state.discovering,

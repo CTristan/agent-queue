@@ -349,7 +349,7 @@ defmodule AgentQueue.Discovery do
         {:ok, task}, {:ok, acc} ->
           {:ok, [task | acc]}
 
-        {:error, reason}, _acc ->
+        {:error, reason}, _ ->
           Logger.warning("Skipping invalid task: #{inspect(reason)}")
           {:error, :invalid_task}
       end)

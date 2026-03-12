@@ -44,7 +44,7 @@ defmodule Mix.Tasks.Aq.Discover do
   end
 
   defp parse_args(args) do
-    {opts, _args, _errors} =
+    {opts, _, _} =
       OptionParser.parse(args,
         strict: [
           max_time: :integer,

@@ -5,7 +5,7 @@ defmodule AgentQueue.SettingsTest do
 
   describe "get/2" do
     test "returns the value for an existing key" do
-      {:ok, _setting} = Settings.update_setting("test_key", "test_value")
+      {:ok, _} = Settings.update_setting("test_key", "test_value")
       assert Settings.get("test_key") == "test_value"
     end
 

@@ -171,7 +171,7 @@ defmodule AgentQueue.Runs do
     |> Repo.one()
     |> case do
       nil -> 0
-      total -> total || 0
+      total -> total
     end
   end
 end

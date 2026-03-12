@@ -7,7 +7,7 @@ defmodule AgentQueueWeb.SettingsLive do
   alias AgentQueue.Settings
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_, _, socket) do
     settings = Settings.all_settings_with_defaults()
 
     socket =
@@ -24,7 +24,7 @@ defmodule AgentQueueWeb.SettingsLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, socket) do
+  def handle_params(_, _, socket) do
     {:noreply, socket}
   end
 

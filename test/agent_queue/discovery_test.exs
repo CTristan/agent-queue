@@ -117,7 +117,7 @@ defmodule AgentQueue.DiscoveryTest do
       output =
         "Some text before the JSON\n[{\"title\": \"Task 1\", \"description\": \"Description 1\", \"priority\": 5}]\nSome text after"
 
-      assert {:ok, [_task]} = Discovery.parse_discovery_output(output)
+      assert {:ok, [_]} = Discovery.parse_discovery_output(output)
     end
   end
 
@@ -174,7 +174,7 @@ defmodule AgentQueue.DiscoveryTest do
       %{test_projects_dir: test_projects_dir}
     end
 
-    test "respects max_projects setting from Settings", %{test_projects_dir: _test_projects_dir} do
+    test "respects max_projects setting from Settings", %{test_projects_dir: _} do
       # Update the setting to limit to 2 projects
       AgentQueue.Settings.update_setting("discovery_max_projects", "2")
 
@@ -183,7 +183,7 @@ defmodule AgentQueue.DiscoveryTest do
       assert AgentQueue.Settings.get_discovery_max_projects() == 2
     end
 
-    test "respects priority mode setting from Settings", %{test_projects_dir: _test_projects_dir} do
+    test "respects priority mode setting from Settings", %{test_projects_dir: _} do
       # Set priority mode to alphabetical
       AgentQueue.Settings.update_setting("discovery_priority_mode", "alphabetical")
 

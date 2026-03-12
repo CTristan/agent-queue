@@ -7,7 +7,7 @@ defmodule AgentQueue.DiscovererTest do
 
     start_time = System.monotonic_time(:millisecond)
 
-    Enum.reduce_while(1..timeout(div(poll_interval)), nil, fn _, _ ->
+    Enum.reduce_while(1..div(timeout, poll_interval), nil, fn _, _ ->
       status = AgentQueue.Discoverer.status()
 
       if predicate.(status) do

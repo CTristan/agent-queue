@@ -5,9 +5,10 @@ defmodule AgentQueueWeb.ProjectsLive do
   use AgentQueueWeb, :live_view
 
   alias AgentQueue.{Projects, Tasks}
+  import AgentQueueWeb.FormatHelpers
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_, _, socket) do
     projects = Projects.list_projects()
     max_projects = AgentQueue.Settings.get_discovery_max_projects()
     priority_mode = AgentQueue.Settings.get_discovery_priority_mode()
@@ -18,35 +19,23 @@ defmodule AgentQueueWeb.ProjectsLive do
       |> assign(:task_stats, get_task_stats(projects))
       |> assign(:max_projects, max_projects)
       |> assign(:priority_mode, priority_mode)
-      |> assign(:discoverer_status, %{
-        discovering: false,
-        stage: nil,
-        discovered_projects: 0,
-        discovered_tasks: 0,
-        elapsed_seconds: 0
-      })
-
-    # Subscribe to discoverer status updates
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(AgentQueue.PubSub, "discoverer:status")
-    end
 
     {:ok, socket}
   end
 
   @impl true
-  def handle_params(_params, _uri, socket) do
+  def handle_params(_, _, socket) do
     {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:discoverer_status, status}, socket) do
+  def handle_info({:discoverer_status, _status}, socket) do
+    # Refresh project list when discovery status changes (hook handles the status assign)
     new_projects = Projects.list_projects()
     new_task_stats = get_task_stats(new_projects)
 
     socket =
       socket
-      |> assign(:discoverer_status, status)
       |> assign(:projects, new_projects)
       |> assign(:task_stats, new_task_stats)
 
@@ -60,7 +49,7 @@ defmodule AgentQueueWeb.ProjectsLive do
         project = Projects.get_project!(id)
 
         case Projects.update_project(project, %{enabled: not project.enabled}) do
-          {:ok, _updated_project} ->
+          {:ok, _} ->
             projects = Projects.list_projects()
 
             socket =
@@ -70,7 +59,7 @@ defmodule AgentQueueWeb.ProjectsLive do
 
             {:noreply, socket}
 
-          {:error, _changeset} ->
+          {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to update project")}
         end
 
@@ -97,7 +86,7 @@ defmodule AgentQueueWeb.ProjectsLive do
 
             {:noreply, socket}
 
-          {:error, _changeset} ->
+          {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to delete project")}
         end
 
@@ -107,7 +96,7 @@ defmodule AgentQueueWeb.ProjectsLive do
   end
 
   @impl true
-  def handle_event("start_discovery", _params, socket) do
+  def handle_event("start_discovery", _, socket) do
     AgentQueue.Discoverer.start_discovery()
     {:noreply, socket}
   end
@@ -119,23 +108,7 @@ defmodule AgentQueueWeb.ProjectsLive do
     |> Map.new()
   end
 
-  defp format_datetime(nil), do: "Never"
-  defp format_datetime(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M")
-
   defp get_stat(stats, key, default \\ 0) do
     Map.get(stats, key, default)
   end
-
-  defp format_duration(seconds) when is_integer(seconds) and seconds > 0 do
-    minutes = div(seconds, 60)
-    secs = rem(seconds, 60)
-
-    if minutes > 0 do
-      "#{minutes}m #{secs}s"
-    else
-      "#{secs}s"
-    end
-  end
-
-  defp format_duration(_), do: "0s"
 end

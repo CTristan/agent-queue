@@ -56,39 +56,6 @@
       </.link>
     </div>
   </div>
-  
-<!-- Discovery Status Panel -->
-  <%= if @discoverer_status.discovering do %>
-    <div class="card bg-info/10 mb-4">
-      <div class="card-body">
-        <div class="flex items-center gap-3">
-          <span class="loading loading-spinner loading-sm"></span>
-          <div class="flex-1">
-            <h3 class="font-semibold">Discovery in Progress</h3>
-            <p class="text-sm opacity-70">
-              {case @discoverer_status.stage do
-                "scanning_projects" ->
-                  "Scanning for projects..."
-                "discovering_tasks" ->
-                  if @discoverer_status.discovered_projects > 0 do
-                    "Discovering tasks... (found #{@discoverer_status.discovered_projects} project#{if @discoverer_status.discovered_projects != 1, do: "s"})"
-                  else
-                    "Discovering tasks..."
-                  end
-                _ ->
-                  "Processing..."
-              end}
-              <%= if @discoverer_status.elapsed_seconds > 0 do %>
-                <span class="badge badge-sm badge-info ml-2">
-                  {format_duration(@discoverer_status.elapsed_seconds)}
-                </span>
-              <% end %>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  <% end %>
 
   <div class="overflow-x-auto">
     <table class="table table-zebra">
@@ -117,17 +84,17 @@
               <% end %>
             </td>
             <td>
-              <div class="flex gap-1">
-                <span class="badge badge-ghost badge-sm">
+              <div class="flex flex-wrap gap-1">
+                <span class="badge badge-ghost badge-sm whitespace-nowrap">
                   Proposed: {get_stat(stats, "proposed")}
                 </span>
-                <span class="badge badge-info badge-sm">
+                <span class="badge badge-info badge-sm whitespace-nowrap">
                   Approved: {get_stat(stats, "approved")}
                 </span>
-                <span class="badge badge-warning badge-sm">
+                <span class="badge badge-warning badge-sm whitespace-nowrap">
                   Review: {get_stat(stats, "review")}
                 </span>
-                <span class="badge badge-success badge-sm">
+                <span class="badge badge-success badge-sm whitespace-nowrap">
                   Completed: {get_stat(stats, "completed")}
                 </span>
               </div>

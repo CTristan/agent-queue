@@ -79,7 +79,7 @@ defmodule AgentQueue.Runner do
   end
 
   @impl true
-  def handle_call(:status, _from, state) do
+  def handle_call(:status, _, state) do
     {:reply,
      %{
        running: state.running,
@@ -127,25 +127,28 @@ defmodule AgentQueue.Runner do
 
   @impl true
   def handle_info(:process_next_task, state) do
-    unless state.running, do: return_noreply(state)
+    cond do
+      not state.running ->
+        {:noreply, state}
 
-    if state.budget_remaining_seconds <= 0 do
-      Logger.info("Budget exhausted, stopping runner")
-      new_state = %{state | running: false, current_task: nil, current_run: nil}
-      broadcast_status(new_state)
-      {:noreply, new_state}
-    end
-
-    case Tasks.list_approved_tasks() do
-      [] ->
-        Logger.info("No approved tasks, stopping runner")
+      state.budget_remaining_seconds <= 0 ->
+        Logger.info("Budget exhausted, stopping runner")
         new_state = %{state | running: false, current_task: nil, current_run: nil}
         broadcast_status(new_state)
         {:noreply, new_state}
 
-      [task | _] ->
-        Logger.info("Executing task: #{task.title}")
-        execute_task(task, state)
+      true ->
+        case Tasks.list_approved_tasks() do
+          [] ->
+            Logger.info("No approved tasks, stopping runner")
+            new_state = %{state | running: false, current_task: nil, current_run: nil}
+            broadcast_status(new_state)
+            {:noreply, new_state}
+
+          [task | _] ->
+            Logger.info("Executing task: #{task.title}")
+            execute_task(task, state)
+        end
     end
   end
 
@@ -189,50 +192,53 @@ defmodule AgentQueue.Runner do
 
       Process.send(self(), {:task_complete, %{duration_seconds: 0}}, [])
       {:noreply, new_state}
+    else
+      # Execute the task in a supervised task
+      Task.start(fn ->
+        result = execute_command(task.project.path, {command, args})
+
+        # Complete the run
+        Runs.complete_run(run, %{
+          exit_code: result.exit_code,
+          stdout: result.stdout,
+          stderr: result.stderr
+        })
+
+        # Update task status
+        update_task_status(task, result.exit_code)
+
+        send(__MODULE__, {:task_complete, %{duration_seconds: result.duration_seconds}})
+      end)
+
+      {:noreply, new_state}
     end
-
-    # Execute the task in a supervised task
-    Task.start(fn ->
-      result = execute_command(task.project.path, {command, args})
-
-      # Complete the run
-      Runs.complete_run(run, %{
-        exit_code: result.exit_code,
-        stdout: result.stdout,
-        stderr: result.stderr
-      })
-
-      # Update task status
-      update_task_status(task, result.exit_code)
-
-      send(__MODULE__, {:task_complete, %{duration_seconds: result.duration_seconds}})
-    end)
-
-    {:noreply, new_state}
   end
 
   defp update_task_status(task, 0), do: Tasks.mark_for_review(task)
-  defp update_task_status(task, _exit_code), do: Tasks.fail_task(task)
+  defp update_task_status(task, _), do: Tasks.fail_task(task)
 
   defp create_git_branch(project_path, branch_name) do
-    {stdout, 0} =
-      System.cmd("git", ["checkout", "-b", branch_name],
-        cd: project_path,
-        stderr_to_stdout: true
-      )
+    case System.cmd("git", ["checkout", "-b", branch_name],
+           cd: project_path,
+           stderr_to_stdout: true
+         ) do
+      {_, 0} ->
+        :ok
 
-    # If branch already exists, check it out
-    if String.contains?(stdout, "already exists") do
-      System.cmd("git", ["checkout", branch_name],
-        cd: project_path,
-        stderr_to_stdout: true
-      )
+      {stdout, _} ->
+        if String.contains?(stdout, "already exists") do
+          System.cmd("git", ["checkout", branch_name],
+            cd: project_path,
+            stderr_to_stdout: true
+          )
+
+          :ok
+        else
+          Logger.error("Failed to create git branch #{branch_name}: #{stdout}")
+          {:error, stdout}
+        end
     end
-
-    :ok
   end
-
-  defp return_noreply(state), do: {:noreply, state}
 
   @doc false
   def build_pi_command_args(description) do

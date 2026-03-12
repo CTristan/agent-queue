@@ -66,7 +66,7 @@ defmodule AgentQueue.RunnerTest do
       Application.put_env(:agent_queue, :pi_model, nil)
 
       description = "test task"
-      {command, args} = Runner.build_pi_command_args(description)
+      {_, args} = Runner.build_pi_command_args(description)
 
       assert "--provider" in args
       assert "test-provider" in args
@@ -80,7 +80,7 @@ defmodule AgentQueue.RunnerTest do
       Application.put_env(:agent_queue, :pi_model, "test-model")
 
       description = "test task"
-      {command, args} = Runner.build_pi_command_args(description)
+      {_, args} = Runner.build_pi_command_args(description)
 
       assert "--model" in args
       assert "test-model" in args

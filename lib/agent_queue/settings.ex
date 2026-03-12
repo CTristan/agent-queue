@@ -114,7 +114,7 @@ defmodule AgentQueue.Settings do
           |> Setting.changeset(%{key: key, value: value})
           |> Repo.insert()
           |> case do
-            {:ok, _setting} ->
+            {:ok, _} ->
               :ok
 
             {:error, changeset} ->
