@@ -20,6 +20,7 @@ defmodule AgentQueueWeb.Router do
     live "/", ProjectsLive, :index
     live "/projects", ProjectsLive, :index
     live "/tasks", TasksLive, :index
+    live "/settings", SettingsLive, :index
   end
 
   # Other scopes may use custom stacks.

@@ -263,11 +263,12 @@ defmodule AgentQueue.Tasks do
   ## Examples
 
       iex> get_task_stats(project)
-      %{proposed: 5, approved: 2, ...}
+      %{"proposed" => 5, "approved" => 2, ...}
   """
   def get_task_stats(%Project{id: project_id}) do
     from(t in Task,
       where: t.project_id == ^project_id,
+      group_by: t.status,
       select: {t.status, count(t.id)}
     )
     |> Repo.all()

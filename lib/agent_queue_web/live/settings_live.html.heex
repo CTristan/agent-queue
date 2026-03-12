@@ -1,0 +1,105 @@
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold">Settings</h1>
+    <div class="flex gap-2">
+      <.link navigate={~p"/projects"} class="btn btn-sm btn-outline">
+        Back to Projects
+      </.link>
+    </div>
+  </div>
+
+  <form phx-submit="save_settings" class="max-w-2xl">
+    <div class="space-y-6">
+      <!-- Discovery Settings Section -->
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          <h2 class="card-title">Discovery Settings</h2>
+          <p class="text-sm opacity-70 mb-4">
+            Configure how projects are discovered and prioritized during the discovery process.
+          </p>
+          
+<!-- Max Projects -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Maximum Projects to Scan</span>
+              <span class="label-text-alt">
+                Controls how many projects are processed during each discovery run
+              </span>
+            </label>
+            <input
+              type="number"
+              name="settings[discovery_max_projects]"
+              value={@form_params["discovery_max_projects"]}
+              min="1"
+              max="1000"
+              class="input input-bordered w-full max-w-xs"
+            />
+            <label class="label">
+              <span class="label-text-alt">
+                Set to a higher value if you have many projects. Lower values speed up discovery but may miss some projects.
+              </span>
+            </label>
+          </div>
+
+          <div class="divider"></div>
+          
+<!-- Priority Mode -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Discovery Priority Mode</span>
+              <span class="label-text-alt">
+                Determines the order in which projects are discovered
+              </span>
+            </label>
+
+            <div class="space-y-3">
+              <%= for mode <- ["most_recently_modified", "least_recently_scanned", "alphabetical", "random"] do %>
+                <label class="cursor-pointer label border border-base-300 rounded-lg hover:bg-base-200 p-4">
+                  <div class="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="settings[discovery_priority_mode]"
+                      value={mode}
+                      checked={@form_params["discovery_priority_mode"] == mode}
+                      class="radio radio-primary mt-1"
+                    />
+                    <div>
+                      <div class="font-semibold">{priority_mode_label(mode)}</div>
+                      <div class="text-sm opacity-70 mt-1">
+                        {priority_mode_description(mode)}
+                      </div>
+                    </div>
+                  </div>
+                </label>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+<!-- Save Button -->
+      <div class="flex justify-end gap-2">
+        <.link navigate={~p"/projects"} class="btn btn-ghost">
+          Cancel
+        </.link>
+        <button type="submit" class="btn btn-primary">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5 mr-2"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </form>
+</div>

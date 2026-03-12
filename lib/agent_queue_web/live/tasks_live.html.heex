@@ -41,11 +41,70 @@
         </button>
       </div>
 
+      <button
+        phx-click="start_discovery"
+        class={"btn btn-sm btn-primary #{if @discoverer_status.discovering, do: "btn-disabled", else: ""}"}
+        disabled={@discoverer_status.discovering}
+      >
+        <%= if @discoverer_status.discovering do %>
+          <span class="loading loading-spinner loading-xs mr-2"></span> Discovering...
+        <% else %>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4 mr-1"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+          Discover Tasks
+        <% end %>
+      </button>
+
       <.link navigate={~p"/projects"} class="btn btn-sm btn-outline">
         Projects
       </.link>
     </div>
   </div>
+  
+<!-- Discovery Status Panel -->
+  <%= if @discoverer_status.discovering do %>
+    <div class="card bg-info/10 mb-4">
+      <div class="card-body">
+        <div class="flex items-center gap-3">
+          <span class="loading loading-spinner loading-sm"></span>
+          <div class="flex-1">
+            <h3 class="font-semibold">Discovery in Progress</h3>
+            <p class="text-sm opacity-70">
+              {case @discoverer_status.stage do
+                "scanning_projects" ->
+                  "Scanning for projects..."
+                "discovering_tasks" ->
+                  if @discoverer_status.discovered_projects > 0 do
+                    "Discovering tasks... (found #{@discoverer_status.discovered_projects} project#{if @discoverer_status.discovered_projects != 1, do: "s"})"
+                  else
+                    "Discovering tasks..."
+                  end
+                _ ->
+                  "Processing..."
+              end}
+              <%= if @discoverer_status.elapsed_seconds > 0 do %>
+                <span class="badge badge-sm badge-info ml-2">
+                  {format_duration(@discoverer_status.elapsed_seconds)}
+                </span>
+              <% end %>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% end %>
   
 <!-- Runner Control Panel -->
   <div class="card bg-base-200 mb-6">
@@ -274,7 +333,7 @@
       </svg>
       <p class="text-lg">No tasks found</p>
       <p class="text-sm">
-        Run <code class="bg-base-300 px-2 py-1 rounded">mix aq.discover</code> to discover tasks
+        Click the "Discover Tasks" button to scan your projects for tasks
       </p>
     </div>
   <% end %>

@@ -16,12 +16,20 @@ defmodule AgentQueueWeb.TasksLive do
       |> assign(:filter_status, "all")
       |> assign(:filter_project_id, nil)
       |> assign(:runner_status, %{running: false, current_task: nil, budget_remaining_seconds: 0})
+      |> assign(:discoverer_status, %{
+        discovering: false,
+        stage: nil,
+        discovered_projects: 0,
+        discovered_tasks: 0,
+        elapsed_seconds: 0
+      })
       |> assign(:show_task_details, nil)
       |> assign(:task_budget_minutes, 60)
 
-    # Subscribe to runner status updates
+    # Subscribe to runner and discoverer status updates
     if connected?(socket) do
       Phoenix.PubSub.subscribe(AgentQueue.PubSub, "runner:status")
+      Phoenix.PubSub.subscribe(AgentQueue.PubSub, "discoverer:status")
       Phoenix.PubSub.subscribe(AgentQueue.PubSub, "tasks:update")
     end
 
@@ -48,6 +56,11 @@ defmodule AgentQueueWeb.TasksLive do
   @impl true
   def handle_info({:runner_status, status}, socket) do
     {:noreply, assign(socket, :runner_status, status)}
+  end
+
+  @impl true
+  def handle_info({:discoverer_status, status}, socket) do
+    {:noreply, assign(socket, :discoverer_status, status)}
   end
 
   @impl true
@@ -184,6 +197,12 @@ defmodule AgentQueueWeb.TasksLive do
       _ ->
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("start_discovery", _params, socket) do
+    AgentQueue.Discoverer.start_discovery()
+    {:noreply, socket}
   end
 
   @impl true

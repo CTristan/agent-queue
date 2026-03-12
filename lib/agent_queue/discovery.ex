@@ -4,7 +4,7 @@ defmodule AgentQueue.Discovery do
   """
 
   require Logger
-  alias AgentQueue.{Projects, Tasks}
+  alias AgentQueue.{Projects, Settings, Tasks}
 
   @doc """
   Scan all projects in the configured projects directory.
@@ -17,7 +17,14 @@ defmodule AgentQueue.Discovery do
   def scan_projects(opts \\ []) do
     projects_dir = get_projects_dir()
     skip_patterns = get_skip_patterns()
-    max_projects = Keyword.get(opts, :max_projects, :unlimited)
+
+    # Get max_projects from settings or opts
+    max_projects =
+      case Keyword.get(opts, :max_projects) do
+        nil -> AgentQueue.Settings.get_discovery_max_projects()
+        :unlimited -> :unlimited
+        val -> val
+      end
 
     Logger.info("Scanning projects directory: #{projects_dir}")
 
@@ -121,6 +128,9 @@ defmodule AgentQueue.Discovery do
               git_project?(path)
           end)
 
+        # Apply priority ordering based on settings
+        projects = apply_priority_ordering(projects, dir)
+
         projects =
           case max_projects do
             :unlimited -> projects
@@ -132,6 +142,73 @@ defmodule AgentQueue.Discovery do
       {:error, reason} ->
         Logger.error("Failed to list projects directory: #{inspect(reason)}")
         []
+    end
+  end
+
+  defp apply_priority_ordering(projects, base_dir) do
+    priority_mode = Settings.get_discovery_priority_mode()
+
+    case priority_mode do
+      "alphabetical" ->
+        Enum.sort(projects)
+
+      "most_recently_modified" ->
+        projects
+        |> Enum.sort_by(
+          fn project_name ->
+            project_path = Path.join(base_dir, project_name)
+            get_last_modified_time(project_path)
+          end,
+          :desc
+        )
+
+      "least_recently_scanned" ->
+        projects
+        |> Enum.sort_by(
+          fn project_name ->
+            project_path = Path.join(base_dir, project_name)
+
+            case Projects.get_project_by_path(project_path) do
+              nil -> nil
+              project -> project.last_scanned
+            end
+          end,
+          :asc
+        )
+
+      "random" ->
+        Enum.shuffle(projects)
+
+      _ ->
+        # Default: alphabetical
+        Enum.sort(projects)
+    end
+  end
+
+  defp get_last_modified_time(dir_path) do
+    # Get the most recent modification time in the project directory
+    # We'll use a simple approach: get the max mtime of files in the root
+    # This is a heuristic - could be improved to scan recursively
+    case File.ls(dir_path) do
+      {:ok, entries} ->
+        entries
+        |> Enum.map(fn entry ->
+          path = Path.join(dir_path, entry)
+
+          case File.stat(path) do
+            {:ok, stat} ->
+              stat.mtime
+
+            {:error, reason} ->
+              Logger.debug("Could not stat #{path}: #{inspect(reason)}")
+              nil
+          end
+        end)
+        |> Enum.filter(& &1)
+        |> Enum.max(fn -> nil end)
+
+      {:error, _} ->
+        nil
     end
   end
 
