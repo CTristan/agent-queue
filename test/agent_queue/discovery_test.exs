@@ -153,7 +153,10 @@ defmodule AgentQueue.DiscoveryTest do
     setup do
       # Create a temporary directory with test projects
       temp_dir = System.tmp_dir!()
-      test_projects_dir = Path.join(temp_dir, "test_projects_#{System.unique_integer()}")
+
+      test_projects_dir =
+        Path.join(temp_dir, "test_projects_#{System.unique_integer([:positive])}")
+
       File.mkdir_p!(test_projects_dir)
 
       # Create a few git project directories
@@ -162,32 +165,70 @@ defmodule AgentQueue.DiscoveryTest do
         File.mkdir_p!(project_path)
         File.mkdir_p!(Path.join(project_path, ".git"))
         File.touch!(Path.join(project_path, "README.md"))
-
-        # Modify files at different times to test sorting
         File.write!(Path.join(project_path, "file.txt"), "content")
       end)
 
+      # Point the app config at our test directory
+      original_dir = Application.get_env(:agent_queue, :projects_dir)
+      Application.put_env(:agent_queue, :projects_dir, test_projects_dir)
+
       on_exit(fn ->
+        if original_dir,
+          do: Application.put_env(:agent_queue, :projects_dir, original_dir),
+          else: Application.delete_env(:agent_queue, :projects_dir)
+
         File.rm_rf!(test_projects_dir)
       end)
 
       %{test_projects_dir: test_projects_dir}
     end
 
-    test "respects max_projects setting from Settings", %{test_projects_dir: _} do
-      # Update the setting to limit to 2 projects
+    test "limits scanned projects to max_projects setting", %{test_projects_dir: _} do
       AgentQueue.Settings.update_setting("discovery_max_projects", "2")
-
-      # Note: This test would need to mock File.dir? and git_project? to work properly
-      # For now, we just verify the setting is read
-      assert AgentQueue.Settings.get_discovery_max_projects() == 2
-    end
-
-    test "respects priority mode setting from Settings", %{test_projects_dir: _} do
-      # Set priority mode to alphabetical
       AgentQueue.Settings.update_setting("discovery_priority_mode", "alphabetical")
 
-      assert AgentQueue.Settings.get_discovery_priority_mode() == "alphabetical"
+      {:ok, discovered} = Discovery.scan_projects()
+
+      # We have 5 test projects but the setting limits to 2, so at most 2 are new
+      assert discovered <= 2
+    end
+
+    test "scans all projects when max_projects exceeds available", %{test_projects_dir: _} do
+      AgentQueue.Settings.update_setting("discovery_max_projects", "100")
+      AgentQueue.Settings.update_setting("discovery_priority_mode", "alphabetical")
+
+      {:ok, discovered} = Discovery.scan_projects()
+
+      assert discovered == 5
+    end
+
+    test "explicit max_projects option overrides setting", %{test_projects_dir: _} do
+      AgentQueue.Settings.update_setting("discovery_max_projects", "100")
+      AgentQueue.Settings.update_setting("discovery_priority_mode", "alphabetical")
+
+      {:ok, discovered} = Discovery.scan_projects(max_projects: 3)
+
+      assert discovered <= 3
+    end
+
+    test "respects alphabetical priority mode", %{test_projects_dir: _} do
+      AgentQueue.Settings.update_setting("discovery_max_projects", "2")
+      AgentQueue.Settings.update_setting("discovery_priority_mode", "alphabetical")
+
+      {:ok, _} = Discovery.scan_projects()
+
+      # With alphabetical sort and limit of 2, only project_a and project_b are registered
+      assert AgentQueue.Projects.get_project_by_path(
+               Path.join(Application.get_env(:agent_queue, :projects_dir), "project_a")
+             )
+
+      assert AgentQueue.Projects.get_project_by_path(
+               Path.join(Application.get_env(:agent_queue, :projects_dir), "project_b")
+             )
+
+      refute AgentQueue.Projects.get_project_by_path(
+               Path.join(Application.get_env(:agent_queue, :projects_dir), "project_e")
+             )
     end
   end
 end

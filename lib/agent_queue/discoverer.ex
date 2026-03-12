@@ -148,7 +148,10 @@ defmodule AgentQueue.Discoverer do
       "Discovery complete! Found #{state.discovered_projects} projects and #{discovered_tasks} tasks"
     )
 
-    broadcast_log(:info, "Discovery complete! Found #{state.discovered_projects} projects and #{discovered_tasks} tasks")
+    broadcast_log(
+      :info,
+      "Discovery complete! Found #{state.discovered_projects} projects and #{discovered_tasks} tasks"
+    )
 
     new_state = %{
       state
@@ -180,7 +183,7 @@ defmodule AgentQueue.Discoverer do
     broadcast_status(new_state)
 
     try do
-      {:ok, discovered_projects} = AgentQueue.Discovery.scan_projects(max_projects: :unlimited)
+      {:ok, discovered_projects} = AgentQueue.Discovery.scan_projects()
       Logger.info("Discovered #{discovered_projects} new projects")
       broadcast_log(:info, "Discovered #{discovered_projects} new projects")
       new_state = %{state | discovered_projects: discovered_projects, stage: "discovering_tasks"}
