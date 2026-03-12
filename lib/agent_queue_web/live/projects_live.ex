@@ -101,6 +101,11 @@ defmodule AgentQueueWeb.ProjectsLive do
     {:noreply, socket}
   end
 
+  def handle_event("stop_discovery", _, socket) do
+    AgentQueue.Discoverer.stop_discovery()
+    {:noreply, socket}
+  end
+
   defp get_task_stats(projects) do
     Enum.map(projects, fn project ->
       {project.id, Tasks.get_task_stats(project)}

@@ -27,6 +27,7 @@ defmodule AgentQueue.Discovery do
       end
 
     Logger.info("Scanning projects directory: #{projects_dir}")
+    broadcast_log(:info, "Scanning projects directory: #{projects_dir}")
 
     discovered =
       projects_dir
@@ -47,10 +48,12 @@ defmodule AgentQueue.Discovery do
   """
   def discover_tasks(project, opts \\ []) do
     Logger.info("Discovering tasks for project: #{project.name}")
+    broadcast_log(:info, "Discovering tasks for project: #{project.name}")
 
     # Check if project has pending tasks
     if Tasks.project_has_pending_tasks?(project) do
       Logger.info("Project has pending tasks, skipping discovery")
+      broadcast_log(:info, "Project #{project.name} has pending tasks, skipping")
       {:ok, 0}
     else
       discovered = discover_and_create_tasks(project, opts)
@@ -71,6 +74,7 @@ defmodule AgentQueue.Discovery do
     start_time = System.monotonic_time(:second)
 
     Logger.info("Discovering tasks for all projects (max time: #{max_time_seconds}s)")
+    broadcast_log(:info, "Discovering tasks for all projects (max time: #{max_time_seconds}s)")
 
     total_discovered =
       Projects.list_enabled_projects()
@@ -85,6 +89,10 @@ defmodule AgentQueue.Discovery do
       |> Enum.sum()
 
     {:ok, total_discovered}
+  end
+
+  defp broadcast_log(level, message) do
+    AgentQueue.Discoverer.broadcast_log(level, message)
   end
 
   # Private Functions
@@ -220,6 +228,7 @@ defmodule AgentQueue.Discovery do
     case Projects.get_or_create_project(path) do
       {:ok, project} ->
         Logger.info("Registered project: #{project.name}")
+        broadcast_log(:info, "Registered project: #{project.name}")
         {:created, project}
 
       {:error, changeset} ->
@@ -248,6 +257,7 @@ defmodule AgentQueue.Discovery do
 
       {:error, reason} ->
         Logger.error("Discovery failed for #{project.name}: #{inspect(reason)}")
+        broadcast_log(:error, "Discovery failed for #{project.name}: #{inspect(reason)}")
         return_zero()
     end
   end
@@ -289,6 +299,8 @@ defmodule AgentQueue.Discovery do
 
       {stderr, exit_code} ->
         Logger.error("pi discovery failed with exit code #{exit_code}: #{stderr}")
+        broadcast_log(:error, "pi discovery failed with exit code #{exit_code}")
+
         {:error, {:command_failed, exit_code, stderr}}
     end
   end

@@ -51,6 +51,20 @@ defmodule AgentQueue.Discoverer do
     Phoenix.PubSub.subscribe(AgentQueue.PubSub, "discoverer:status")
   end
 
+  @doc """
+  Subscribe to discovery log messages.
+  """
+  def subscribe_logs do
+    Phoenix.PubSub.subscribe(AgentQueue.PubSub, "discoverer:logs")
+  end
+
+  @doc """
+  Stop a running discovery.
+  """
+  def stop_discovery do
+    GenServer.cast(__MODULE__, :stop_discovery)
+  end
+
   # GenServer Callbacks
 
   @impl true
@@ -61,7 +75,8 @@ defmodule AgentQueue.Discoverer do
       discovered_projects: 0,
       discovered_tasks: 0,
       max_time_seconds: Keyword.get(opts, :max_time_seconds, 30 * 60),
-      start_time: nil
+      start_time: nil,
+      task_pid: nil
     }
 
     {:ok, state}
@@ -89,6 +104,8 @@ defmodule AgentQueue.Discoverer do
       max_time = Keyword.get(opts, :max_time_seconds, state.max_time_seconds)
 
       Logger.info("Starting discovery (max time: #{max_time}s)")
+      Phoenix.PubSub.broadcast(AgentQueue.PubSub, "discoverer:logs", :clear_logs)
+      broadcast_log(:info, "Starting discovery (max time: #{max_time}s)")
 
       new_state = %{
         state
@@ -108,10 +125,30 @@ defmodule AgentQueue.Discoverer do
   end
 
   @impl true
+  def handle_cast(:stop_discovery, state) do
+    if state.discovering do
+      Logger.info("Stopping discovery")
+      broadcast_log(:warning, "Discovery cancelled by user")
+
+      if state.task_pid && Process.alive?(state.task_pid) do
+        Process.exit(state.task_pid, :kill)
+      end
+
+      new_state = %{state | discovering: false, stage: nil, task_pid: nil}
+      broadcast_status(new_state)
+      {:noreply, new_state}
+    else
+      {:noreply, state}
+    end
+  end
+
+  @impl true
   def handle_cast({:discovery_complete, discovered_tasks}, state) do
     Logger.info(
       "Discovery complete! Found #{state.discovered_projects} projects and #{discovered_tasks} tasks"
     )
+
+    broadcast_log(:info, "Discovery complete! Found #{state.discovered_projects} projects and #{discovered_tasks} tasks")
 
     new_state = %{
       state
@@ -129,6 +166,7 @@ defmodule AgentQueue.Discoverer do
   @impl true
   def handle_cast({:discovery_failed, reason}, state) do
     Logger.error("Discovery failed: #{inspect(reason)}")
+    broadcast_log(:error, "Discovery failed: #{inspect(reason)}")
 
     new_state = %{state | discovering: false, stage: nil}
     broadcast_status(new_state)
@@ -144,6 +182,7 @@ defmodule AgentQueue.Discoverer do
     try do
       {:ok, discovered_projects} = AgentQueue.Discovery.scan_projects(max_projects: :unlimited)
       Logger.info("Discovered #{discovered_projects} new projects")
+      broadcast_log(:info, "Discovered #{discovered_projects} new projects")
       new_state = %{state | discovered_projects: discovered_projects, stage: "discovering_tasks"}
       broadcast_status(new_state)
       Process.send(self(), :discover_tasks, [])
@@ -151,6 +190,7 @@ defmodule AgentQueue.Discoverer do
     rescue
       error ->
         Logger.error("Discovery failed during project scan: #{inspect(error)}")
+        broadcast_log(:error, "Discovery failed during project scan: #{inspect(error)}")
         GenServer.cast(__MODULE__, {:discovery_failed, error})
         {:noreply, state}
     end
@@ -161,21 +201,32 @@ defmodule AgentQueue.Discoverer do
     new_state = %{state | stage: "discovering_tasks"}
     broadcast_status(new_state)
 
-    Task.Supervisor.start_child(AgentQueue.TaskSupervisor, fn ->
-      try do
-        {:ok, discovered_tasks} =
-          AgentQueue.Discovery.discover_all_tasks(max_time_seconds: state.max_time_seconds)
+    {:ok, pid} =
+      Task.Supervisor.start_child(AgentQueue.TaskSupervisor, fn ->
+        try do
+          {:ok, discovered_tasks} =
+            AgentQueue.Discovery.discover_all_tasks(max_time_seconds: state.max_time_seconds)
 
-        Logger.info("Discovered #{discovered_tasks} new tasks")
-        GenServer.cast(__MODULE__, {:discovery_complete, discovered_tasks})
-      rescue
-        error ->
-          Logger.error("Discovery failed: #{inspect(error)}")
-          GenServer.cast(__MODULE__, {:discovery_failed, error})
-      end
-    end)
+          Logger.info("Discovered #{discovered_tasks} new tasks")
+          AgentQueue.Discoverer.broadcast_log(:info, "Discovered #{discovered_tasks} new tasks")
+          GenServer.cast(__MODULE__, {:discovery_complete, discovered_tasks})
+        rescue
+          error ->
+            Logger.error("Discovery failed: #{inspect(error)}")
+            AgentQueue.Discoverer.broadcast_log(:error, "Discovery failed: #{inspect(error)}")
+            GenServer.cast(__MODULE__, {:discovery_failed, error})
+        end
+      end)
 
-    {:noreply, state}
+    {:noreply, %{new_state | task_pid: pid}}
+  end
+
+  @doc false
+  def broadcast_log(level, message) do
+    Phoenix.PubSub.broadcast(AgentQueue.PubSub, "discoverer:logs", {
+      :discoverer_log,
+      %{timestamp: DateTime.utc_now(), level: level, message: message}
+    })
   end
 
   defp broadcast_status(state) do

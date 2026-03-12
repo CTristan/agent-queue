@@ -57,6 +57,80 @@
     </div>
   </div>
 
+  <%= if @discoverer_status.discovering do %>
+    <div class="card bg-info/10 mb-4">
+      <div class="card-body py-3">
+        <div class="flex items-center gap-3">
+          <span class="loading loading-spinner loading-sm"></span>
+          <div class="flex-1">
+            <h3 class="font-semibold">Discovery in Progress</h3>
+            <p class="text-sm opacity-70">
+              {case @discoverer_status.stage do
+                "scanning_projects" ->
+                  "Scanning for projects..."
+
+                "discovering_tasks" ->
+                  if @discoverer_status.discovered_projects > 0 do
+                    "Discovering tasks... (found #{@discoverer_status.discovered_projects} project#{if @discoverer_status.discovered_projects != 1, do: "s"})"
+                  else
+                    "Discovering tasks..."
+                  end
+
+                _ ->
+                  "Processing..."
+              end}
+              <%= if @discoverer_status.elapsed_seconds > 0 do %>
+                <span class="badge badge-sm badge-info ml-2">
+                  {AgentQueueWeb.FormatHelpers.format_duration(@discoverer_status.elapsed_seconds)}
+                </span>
+              <% end %>
+            </p>
+          </div>
+          <button phx-click="stop_discovery" class="btn btn-xs btn-outline btn-error">
+            Cancel
+          </button>
+        </div>
+        <%= if length(@discovery_logs) > 0 do %>
+          <div class="mt-2">
+            <button
+              phx-click="toggle-discovery-logs"
+              class="btn btn-xs btn-ghost gap-1"
+            >
+              <%= if @discovery_logs_visible do %>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+                Hide Logs
+              <% else %>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                Show Logs
+              <% end %>
+              <span class="badge badge-xs badge-info">{length(@discovery_logs)}</span>
+            </button>
+          </div>
+        <% end %>
+        <%= if @discovery_logs_visible and length(@discovery_logs) > 0 do %>
+          <div
+            id="discovery-log-panel"
+            phx-hook="ScrollBottom"
+            class="mt-2 max-h-64 overflow-y-auto bg-base-300 rounded-lg p-3 font-mono text-xs"
+          >
+            <%= for entry <- @discovery_logs do %>
+              <div class={[
+                "py-0.5",
+                entry.level == :error && "text-error",
+                entry.level == :warning && "text-warning",
+                entry.level == :info && "text-info"
+              ]}>
+                <span class="opacity-50">{Calendar.strftime(entry.timestamp, "%H:%M:%S")}</span>
+                <span class="font-semibold uppercase">[{entry.level}]</span>
+                {entry.message}
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
   <div class="overflow-x-auto">
     <table class="table table-zebra">
       <thead>
