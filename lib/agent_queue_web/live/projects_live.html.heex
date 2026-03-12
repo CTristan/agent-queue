@@ -1,0 +1,101 @@
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold">Projects</h1>
+    <div class="flex gap-2">
+      <.link navigate={~p"/tasks"} class="btn btn-primary">
+        View Tasks
+      </.link>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-zebra">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Path</th>
+          <th>Last Scanned</th>
+          <th>Status</th>
+          <th>Tasks</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for project <- @projects do %>
+          <% stats = Map.get(@task_stats, project.id, %{}) %>
+          <tr>
+            <td class="font-medium">{project.name}</td>
+            <td class="text-sm text-base-content/70">{project.path}</td>
+            <td>{format_datetime(project.last_scanned)}</td>
+            <td>
+              <%= if project.enabled do %>
+                <span class="badge badge-success">Enabled</span>
+              <% else %>
+                <span class="badge badge-error">Disabled</span>
+              <% end %>
+            </td>
+            <td>
+              <div class="flex gap-1">
+                <span class="badge badge-ghost badge-sm">
+                  Proposed: {get_stat(stats, "proposed")}
+                </span>
+                <span class="badge badge-info badge-sm">
+                  Approved: {get_stat(stats, "approved")}
+                </span>
+                <span class="badge badge-warning badge-sm">
+                  Review: {get_stat(stats, "review")}
+                </span>
+                <span class="badge badge-success badge-sm">
+                  Completed: {get_stat(stats, "completed")}
+                </span>
+              </div>
+            </td>
+            <td>
+              <div class="flex gap-2">
+                <button
+                  phx-click="toggle_enabled"
+                  phx-value-id={project.id}
+                  class="btn btn-sm btn-outline"
+                >
+                  {if project.enabled, do: "Disable", else: "Enable"}
+                </button>
+                <button
+                  phx-click="delete_project"
+                  phx-value-id={project.id}
+                  class="btn btn-sm btn-error btn-outline"
+                  data-confirm="Are you sure you want to delete this project and all its tasks?"
+                >
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+
+  <%= if @projects == [] do %>
+    <div class="text-center py-12 text-base-content/50">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-16 w-16 mx-auto mb-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+        />
+      </svg>
+      <p class="text-lg">No projects yet</p>
+      <p class="text-sm">
+        Run <code class="bg-base-300 px-2 py-1 rounded">mix aq.discover</code>
+        to discover projects
+      </p>
+    </div>
+  <% end %>
+</div>

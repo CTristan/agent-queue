@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint_and_format:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Elixir
+        id: beam
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.15"
+          otp-version: "26"
+
+      - name: Retrieve Mix Dependencies Cache
+        uses: actions/cache@v4
+        id: mix-cache
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install Dependencies
+        run: mix deps.get --only test
+        env:
+          MIX_ENV: test
+
+      - name: Run CI checks
+        run: ./scripts/ci.sh --check
+        env:
+          MIX_ENV: test

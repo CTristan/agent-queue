@@ -1,0 +1,281 @@
+<div class="container mx-auto px-4 py-8">
+  <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+    <h1 class="text-3xl font-bold">Tasks</h1>
+
+    <div class="flex flex-wrap gap-4 items-center">
+      <div class="join">
+        <button
+          phx-click="filter"
+          phx-value-status="all"
+          class={"btn btn-sm join-item #{@filter_status == "all" && "btn-active"}"}
+        >
+          All
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-status="proposed"
+          class={"btn btn-sm join-item #{@filter_status == "proposed" && "btn-active"}"}
+        >
+          Proposed
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-status="approved"
+          class={"btn btn-sm join-item #{@filter_status == "approved" && "btn-active"}"}
+        >
+          Approved
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-status="review"
+          class={"btn btn-sm join-item #{@filter_status == "review" && "btn-active"}"}
+        >
+          Review
+        </button>
+        <button
+          phx-click="filter"
+          phx-value-status="completed"
+          class={"btn btn-sm join-item #{@filter_status == "completed" && "btn-active"}"}
+        >
+          Completed
+        </button>
+      </div>
+
+      <.link navigate={~p"/projects"} class="btn btn-sm btn-outline">
+        Projects
+      </.link>
+    </div>
+  </div>
+  
+<!-- Runner Control Panel -->
+  <div class="card bg-base-200 mb-6">
+    <div class="card-body">
+      <h2 class="card-title">Task Runner</h2>
+
+      <div class="flex flex-wrap gap-4 items-center mt-2">
+        <%= if @runner_status.running do %>
+          <div class="flex items-center gap-2">
+            <span class="loading loading-spinner loading-sm"></span>
+            <span>
+              <%= if @runner_status.current_task do %>
+                Running: {@runner_status.current_task.title}
+              <% else %>
+                Preparing...
+              <% end %>
+            </span>
+          </div>
+          <span class="badge badge-info">
+            Budget: {div(@runner_status.budget_remaining_seconds, 60)}m remaining
+          </span>
+          <button phx-click="stop_run" class="btn btn-sm btn-error">
+            Stop
+          </button>
+        <% else %>
+          <div class="flex gap-2 items-center">
+            <label class="label">
+              <span class="label-text">Budget (minutes):</span>
+            </label>
+            <input
+              type="number"
+              name="budget"
+              value={@task_budget_minutes}
+              phx-blur="update_budget"
+              class="input input-bordered input-sm w-24"
+              min="1"
+            />
+          </div>
+          <button phx-click="start_run" class="btn btn-sm btn-primary">
+            Start Run
+          </button>
+        <% end %>
+      </div>
+    </div>
+  </div>
+  
+<!-- Tasks List -->
+  <div class="space-y-4">
+    <%= for task <- @tasks do %>
+      <div class={"card bg-base-100 shadow-sm #{task.status == "review" && "border border-warning"}"}>
+        <div class="card-body">
+          <div class="flex justify-between items-start">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-2">
+                <span class={"badge #{status_badge(task.status)}"}>
+                  {status_icon(task.status)} {String.capitalize(task.status)}
+                </span>
+                <span class="badge badge-ghost">
+                  Priority: {task.priority}
+                </span>
+                <span class="text-sm text-base-content/70">
+                  {task.project.name}
+                </span>
+              </div>
+
+              <h3 class="card-title text-lg mb-2">{task.title}</h3>
+
+              <%= if task.description do %>
+                <p class="text-sm text-base-content/80 mb-2">
+                  {String.slice(task.description, 0, 200)}...
+                </p>
+              <% end %>
+
+              <div class="text-xs text-base-content/50">
+                Created: {format_datetime(task.created_at)}
+                <%= if task.started_at do %>
+                  | Started: {format_datetime(task.started_at)}
+                <% end %>
+                <%= if task.completed_at do %>
+                  | Completed: {format_datetime(task.completed_at)}
+                <% end %>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center gap-2">
+                <label class="label">
+                  <span class="label-text text-xs">Priority:</span>
+                </label>
+                <input
+                  type="number"
+                  value={task.priority}
+                  phx-blur="set_priority"
+                  phx-value-id={task.id}
+                  phx-value-priority="JS.this.value"
+                  class="input input-bordered input-xs w-16"
+                  min="1"
+                  max="10"
+                />
+              </div>
+
+              <%= case task.status do %>
+                <% "proposed" -> %>
+                  <div class="flex gap-2">
+                    <button
+                      phx-click="approve_task"
+                      phx-value-id={task.id}
+                      class="btn btn-sm btn-success"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      phx-click="reject_task"
+                      phx-value-id={task.id}
+                      class="btn btn-sm btn-error btn-outline"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                <% "review" -> %>
+                  <div class="flex gap-2">
+                    <button
+                      phx-click="complete_task"
+                      phx-value-id={task.id}
+                      class="btn btn-sm btn-success"
+                    >
+                      Mark Complete
+                    </button>
+                    <button
+                      phx-click="reject_task"
+                      phx-value-id={task.id}
+                      class="btn btn-sm btn-error btn-outline"
+                    >
+                      Request Changes
+                    </button>
+                  </div>
+                <% "approved" -> %>
+                  <button
+                    phx-click="reject_task"
+                    phx-value-id={task.id}
+                    class="btn btn-sm btn-error btn-outline"
+                  >
+                    Reject
+                  </button>
+                <% _ -> %>
+                  <span class="text-sm text-base-content/50">
+                    No actions available
+                  </span>
+              <% end %>
+
+              <button
+                phx-click="toggle_task_details"
+                phx-value-id={task.id}
+                class="btn btn-sm btn-outline btn-ghost"
+              >
+                <%= if @show_task_details == task.id do %>
+                  Hide Details
+                <% else %>
+                  View Details
+                <% end %>
+              </button>
+            </div>
+          </div>
+
+          <%= if @show_task_details == task.id do %>
+            <div class="mt-4 pt-4 border-t border-base-200">
+              <h4 class="font-bold mb-2">Task Description</h4>
+              <pre class="bg-base-200 p-4 rounded-lg text-sm overflow-x-auto"><%= task.description %></pre>
+
+              <%= if task.runs != [] do %>
+                <h4 class="font-bold mb-2 mt-4">Run History</h4>
+                <div class="space-y-2">
+                  <%= for run <- task.runs do %>
+                    <div class="bg-base-200 p-3 rounded-lg">
+                      <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium">
+                          {format_datetime(run.started_at)}
+                        </span>
+                        <span class={"badge badge-sm #{run.exit_code == 0 && "badge-success" || "badge-error"}"}>
+                          Exit: {run.exit_code}
+                        </span>
+                      </div>
+                      <%= if run.duration_seconds do %>
+                        <div class="text-xs text-base-content/70 mb-2">
+                          Duration: {format_duration(run.duration_seconds)}
+                        </div>
+                      <% end %>
+                      <%= if run.stdout do %>
+                        <details class="mb-2">
+                          <summary class="cursor-pointer text-sm font-medium">Output</summary>
+                          <pre class="bg-base-300 p-2 rounded mt-2 text-xs overflow-x-auto"><%= run.stdout %></pre>
+                        </details>
+                      <% end %>
+                      <%= if run.stderr do %>
+                        <details>
+                          <summary class="cursor-pointer text-sm font-medium">Errors</summary>
+                          <pre class="bg-base-300 p-2 rounded mt-2 text-xs overflow-x-auto text-error"><%= run.stderr %></pre>
+                        </details>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <%= if @tasks == [] do %>
+    <div class="text-center py-12 text-base-content/50">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-16 w-16 mx-auto mb-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+        />
+      </svg>
+      <p class="text-lg">No tasks found</p>
+      <p class="text-sm">
+        Run <code class="bg-base-300 px-2 py-1 rounded">mix aq.discover</code> to discover tasks
+      </p>
+    </div>
+  <% end %>
+</div>

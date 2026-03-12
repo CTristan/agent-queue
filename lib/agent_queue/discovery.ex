@@ -1,0 +1,381 @@
+defmodule AgentQueue.Discovery do
+  @moduledoc """
+  Task discovery module that scans projects and proposes tasks.
+  """
+
+  require Logger
+  alias AgentQueue.{Projects, Tasks}
+
+  @doc """
+  Scan all projects in the configured projects directory.
+
+  ## Examples
+
+      iex> AgentQueue.Discovery.scan_projects()
+      {:ok, discovered_count}
+  """
+  def scan_projects(opts \\ []) do
+    projects_dir = get_projects_dir()
+    skip_patterns = get_skip_patterns()
+    max_projects = Keyword.get(opts, :max_projects, :unlimited)
+
+    Logger.info("Scanning projects directory: #{projects_dir}")
+
+    discovered =
+      projects_dir
+      |> list_git_projects(skip_patterns, max_projects)
+      |> Enum.map(&register_project/1)
+      |> Enum.count(fn {status, _} -> status == :created end)
+
+    {:ok, discovered}
+  end
+
+  @doc """
+  Discover tasks for a specific project.
+
+  ## Examples
+
+      iex> AgentQueue.Discovery.discover_tasks(project)
+      {:ok, discovered_count}
+  """
+  def discover_tasks(project, opts \\ []) do
+    Logger.info("Discovering tasks for project: #{project.name}")
+
+    # Check if project has pending tasks
+    if Tasks.project_has_pending_tasks?(project) do
+      Logger.info("Project has pending tasks, skipping discovery")
+      {:ok, 0}
+    else
+      discovered = discover_and_create_tasks(project, opts)
+      {:ok, discovered}
+    end
+  end
+
+  @doc """
+  Discover tasks for all projects.
+
+  ## Examples
+
+      iex> AgentQueue.Discovery.discover_all_tasks()
+      {:ok, total_discovered}
+  """
+  def discover_all_tasks(opts \\ []) do
+    max_time_seconds = Keyword.get(opts, :max_time_seconds, 30 * 60)
+    start_time = System.monotonic_time(:second)
+
+    Logger.info("Discovering tasks for all projects (max time: #{max_time_seconds}s)")
+
+    total_discovered =
+      Projects.list_enabled_projects()
+      |> Enum.take_while(fn _ ->
+        elapsed = System.monotonic_time(:second) - start_time
+        elapsed < max_time_seconds
+      end)
+      |> Enum.map(fn project ->
+        {:ok, count} = discover_tasks(project, opts)
+        count
+      end)
+      |> Enum.sum()
+
+    {:ok, total_discovered}
+  end
+
+  # Private Functions
+
+  defp get_projects_dir do
+    path = Application.get_env(:agent_queue, :projects_dir, System.user_home!() <> "/projects")
+
+    # Expand and normalize path
+    expanded_path = Path.expand(path)
+
+    # Validate path exists and is accessible
+    unless File.dir?(expanded_path) do
+      raise ArgumentError, "Projects directory does not exist: #{expanded_path}"
+    end
+
+    expanded_path
+  end
+
+  defp get_skip_patterns do
+    Application.get_env(:agent_queue, :discovery_skip_patterns, [
+      "node_modules",
+      ".git",
+      "target",
+      "_build",
+      "deps",
+      ".elixir_ls",
+      "vendor"
+    ])
+  end
+
+  defp list_git_projects(dir, skip_patterns, max_projects) do
+    case File.ls(dir) do
+      {:ok, entries} ->
+        projects =
+          entries
+          |> Enum.filter(fn name ->
+            path = Path.join(dir, name)
+
+            File.dir?(path) and
+              not Enum.any?(skip_patterns, &String.starts_with?(name, &1)) and
+              git_project?(path)
+          end)
+
+        projects =
+          case max_projects do
+            :unlimited -> projects
+            n -> Enum.take(projects, n)
+          end
+
+        Enum.map(projects, &Path.join(dir, &1))
+
+      {:error, reason} ->
+        Logger.error("Failed to list projects directory: #{inspect(reason)}")
+        []
+    end
+  end
+
+  defp git_project?(path) do
+    File.dir?(Path.join(path, ".git"))
+  end
+
+  defp register_project(path) do
+    case Projects.get_or_create_project(path) do
+      {:ok, project} ->
+        Logger.info("Registered project: #{project.name}")
+        {:created, project}
+
+      {:error, changeset} ->
+        Logger.error("Failed to register project: #{inspect(changeset.errors)}")
+        {:error, changeset}
+    end
+  end
+
+  defp discover_and_create_tasks(project, opts) do
+    prompt = build_discovery_prompt(project)
+    dry_run = Keyword.get(opts, :dry_run, false)
+
+    if dry_run do
+      Logger.info("[DRY RUN] Would run discovery for: #{project.name}")
+      return_zero()
+    end
+
+    case run_pi_discovery(project.path, prompt) do
+      {:ok, tasks} ->
+        created =
+          Enum.map(tasks, &create_task_from_discovery(project, &1))
+          |> Enum.count(fn {status, _} -> status == :ok end)
+
+        Projects.update_last_scanned(project)
+        created
+
+      {:error, reason} ->
+        Logger.error("Discovery failed for #{project.name}: #{inspect(reason)}")
+        return_zero()
+    end
+  end
+
+  defp return_zero, do: 0
+
+  defp build_discovery_prompt(project) do
+    """
+    You are a code analysis assistant. Examine the project at #{project.path} and identify potential tasks that could be automated.
+
+    Look for:
+    1. GitHub issues (if `gh` CLI is available)
+    2. TODO/FIXME/HACK comments in code
+    3. Failing tests or lint errors
+    4. Outdated dependencies
+    5. Existing planning docs (PLAN.md, CLAUDE.md, etc.)
+    6. General code quality improvements
+
+    Output your findings as a JSON array of task objects with the following structure:
+    {
+      "title": "Short task description",
+      "description": "Detailed task specification that can be passed to pi -p",
+      "priority": 1-10 (1 = highest priority, 10 = lowest)
+    }
+
+    Be selective and only suggest high-quality, actionable tasks. Aim for 3-5 tasks maximum.
+    """
+  end
+
+  defp run_pi_discovery(project_path, prompt) do
+    {command, args} = build_pi_command_args(prompt)
+
+    case System.cmd(command, args,
+           cd: project_path,
+           stderr_to_stdout: false
+         ) do
+      {stdout, 0} ->
+        parse_discovery_output(stdout)
+
+      {stderr, exit_code} ->
+        Logger.error("pi discovery failed with exit code #{exit_code}: #{stderr}")
+        {:error, {:command_failed, exit_code, stderr}}
+    end
+  end
+
+  @doc false
+  def build_pi_command_args(prompt) do
+    base_command = Application.get_env(:agent_queue, :pi_command, "pi")
+
+    cmd_args = ["-p"]
+
+    # Add provider/model if configured
+    cmd_args =
+      if provider = Application.get_env(:agent_queue, :pi_provider) do
+        cmd_args ++ ["--provider", provider]
+      else
+        cmd_args
+      end
+
+    cmd_args =
+      if model = Application.get_env(:agent_queue, :pi_model) do
+        cmd_args ++ ["--model", model]
+      else
+        cmd_args
+      end
+
+    {base_command, cmd_args ++ [prompt]}
+  end
+
+  @doc false
+  def parse_discovery_output(output) do
+    with {:ok, tasks} when is_list(tasks) <- Jason.decode(output),
+         {:ok, validated_tasks} <- validate_and_sanitize_tasks(tasks) do
+      {:ok, validated_tasks}
+    else
+      {:ok, _} ->
+        # Decoded but not a list, try to extract JSON array from text
+        extract_json_array(output)
+
+      {:error, _} ->
+        # Parse failed, try to extract JSON array from mixed text
+        extract_json_array(output)
+    end
+  end
+
+  @max_tasks 10
+  @max_string_length 10_000
+
+  defp validate_and_sanitize_tasks(tasks) when length(tasks) > @max_tasks do
+    Logger.warning("Received #{length(tasks)} tasks, limiting to #{@max_tasks}")
+    validate_and_sanitize_tasks(Enum.take(tasks, @max_tasks))
+  end
+
+  defp validate_and_sanitize_tasks(tasks) do
+    validated =
+      tasks
+      |> Enum.map(&validate_task/1)
+      |> Enum.reduce({:ok, []}, fn
+        {:ok, task}, {:ok, acc} ->
+          {:ok, [task | acc]}
+
+        {:error, reason}, _acc ->
+          Logger.warning("Skipping invalid task: #{inspect(reason)}")
+          {:error, :invalid_task}
+      end)
+
+    case validated do
+      {:ok, tasks} -> {:ok, Enum.reverse(tasks)}
+      error -> error
+    end
+  end
+
+  defp validate_task(task) when not is_map(task), do: {:error, :invalid_task}
+
+  defp validate_task(task) do
+    title = Map.get(task, "title", "Untitled task")
+    description = Map.get(task, "description", "")
+
+    cond do
+      not is_binary(title) or byte_size(title) >= 500 ->
+        {:error, :invalid_task}
+
+      not is_binary(description) or byte_size(description) >= @max_string_length ->
+        {:error, :invalid_task}
+
+      true ->
+        priority = normalize_priority(Map.get(task, "priority", 10))
+
+        {:ok,
+         %{
+           title: String.trim(title),
+           description: String.trim(description),
+           priority: priority
+         }}
+    end
+  end
+
+  defp extract_json_array(output) do
+    case Regex.run(~r/\[[\s\S]*\]/, output) do
+      [json_array] ->
+        parse_json_array(json_array)
+
+      _ ->
+        Logger.warning("Could not extract JSON array from discovery output")
+        {:error, :parse_failed}
+    end
+  end
+
+  defp parse_json_array(json_array) do
+    case Jason.decode(json_array) do
+      {:ok, tasks} when is_list(tasks) ->
+        validate_and_sanitize_tasks(tasks)
+
+      _ ->
+        Logger.warning("Could not parse discovery output as task array")
+        {:error, :parse_failed}
+    end
+  end
+
+  defp extract_tasks_from_text(output) do
+    tasks = extract_tasks_from_text_fallback(output)
+
+    case tasks do
+      [] ->
+        Logger.warning("No tasks found in discovery output")
+        {:error, :no_tasks_found}
+
+      _tasks ->
+        {:ok, tasks}
+    end
+  end
+
+  defp normalize_task(task) do
+    %{
+      "title" => Map.get(task, "title", "Untitled task"),
+      "description" => Map.get(task, "description", Map.get(task, "title", "")),
+      "priority" => normalize_priority(Map.get(task, "priority", 10))
+    }
+  end
+
+  defp normalize_priority(priority) when is_integer(priority) do
+    max(1, min(10, priority))
+  end
+
+  defp normalize_priority(priority) when is_binary(priority) do
+    case Integer.parse(priority) do
+      {int, _} -> max(1, min(10, int))
+      :error -> 10
+    end
+  end
+
+  defp normalize_priority(_), do: 10
+
+  defp extract_tasks_from_text_fallback(_text) do
+    # Try to extract task-like structures from text
+    # This is a fallback when JSON parsing fails
+    []
+  end
+
+  defp create_task_from_discovery(project, task_attrs) do
+    Tasks.create_task_for_project(project, %{
+      title: task_attrs.title,
+      description: task_attrs.description,
+      priority: task_attrs.priority,
+      source: "auto"
+    })
+  end
+end
