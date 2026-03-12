@@ -1,4 +1,7 @@
 defmodule AgentQueueWeb.TasksLive do
+  @moduledoc """
+  Live view for managing tasks.
+  """
   use AgentQueueWeb, :live_view
 
   alias AgentQueue.{Runner, Tasks}

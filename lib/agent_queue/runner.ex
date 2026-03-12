@@ -7,7 +7,7 @@ defmodule AgentQueue.Runner do
   require Logger
 
   alias AgentQueue.{Runs, Tasks}
-  alias AgentQueue.Tasks.Task
+  alias AgentQueue.Tasks.Task, as: TaskRecord
 
   # Public API
 
@@ -166,7 +166,7 @@ defmodule AgentQueue.Runner do
     {:noreply, new_state}
   end
 
-  defp execute_task(%Task{} = task, state) do
+  defp execute_task(%TaskRecord{} = task, state) do
     # Mark task as running
     {:ok, task} = Tasks.start_task(task)
 

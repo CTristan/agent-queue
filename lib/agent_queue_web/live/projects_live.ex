@@ -1,4 +1,7 @@
 defmodule AgentQueueWeb.ProjectsLive do
+  @moduledoc """
+  Live view for managing projects.
+  """
   use AgentQueueWeb, :live_view
 
   alias AgentQueue.{Projects, Tasks}

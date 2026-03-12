@@ -10,7 +10,14 @@ defmodule AgentQueue.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      # Compiler options for stricter checking
+      elixirc_options: [
+        warnings_as_errors: Mix.env() in [:test, :ci],
+        # Enable all warnings for better code quality
+        docs: true,
+        debug_info: true
+      ]
     ]
   end
 

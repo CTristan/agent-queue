@@ -1,4 +1,7 @@
 defmodule AgentQueueWeb.Telemetry do
+  @moduledoc """
+  Telemetry configuration and metrics collection.
+  """
   use Supervisor
   import Telemetry.Metrics
 

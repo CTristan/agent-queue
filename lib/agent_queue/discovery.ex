@@ -283,6 +283,19 @@ defmodule AgentQueue.Discovery do
     end
   end
 
+  defp normalize_priority(priority) when is_integer(priority) do
+    max(1, min(10, priority))
+  end
+
+  defp normalize_priority(priority) when is_binary(priority) do
+    case Integer.parse(priority) do
+      {int, _} -> max(1, min(10, int))
+      :error -> 10
+    end
+  end
+
+  defp normalize_priority(_), do: 10
+
   defp validate_task(task) when not is_map(task), do: {:error, :invalid_task}
 
   defp validate_task(task) do
@@ -328,46 +341,6 @@ defmodule AgentQueue.Discovery do
         Logger.warning("Could not parse discovery output as task array")
         {:error, :parse_failed}
     end
-  end
-
-  defp extract_tasks_from_text(output) do
-    tasks = extract_tasks_from_text_fallback(output)
-
-    case tasks do
-      [] ->
-        Logger.warning("No tasks found in discovery output")
-        {:error, :no_tasks_found}
-
-      _tasks ->
-        {:ok, tasks}
-    end
-  end
-
-  defp normalize_task(task) do
-    %{
-      "title" => Map.get(task, "title", "Untitled task"),
-      "description" => Map.get(task, "description", Map.get(task, "title", "")),
-      "priority" => normalize_priority(Map.get(task, "priority", 10))
-    }
-  end
-
-  defp normalize_priority(priority) when is_integer(priority) do
-    max(1, min(10, priority))
-  end
-
-  defp normalize_priority(priority) when is_binary(priority) do
-    case Integer.parse(priority) do
-      {int, _} -> max(1, min(10, int))
-      :error -> 10
-    end
-  end
-
-  defp normalize_priority(_), do: 10
-
-  defp extract_tasks_from_text_fallback(_text) do
-    # Try to extract task-like structures from text
-    # This is a fallback when JSON parsing fails
-    []
   end
 
   defp create_task_from_discovery(project, task_attrs) do
