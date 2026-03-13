@@ -130,6 +130,48 @@ defmodule AgentQueue.SettingsTest do
     end
   end
 
+  describe "get_discovery_task_timeout/0" do
+    test "returns the configured default" do
+      assert Settings.get_discovery_task_timeout() == 300
+    end
+
+    test "returns updated value" do
+      {:ok, _} = Settings.update_setting("discovery_task_timeout", "60")
+      assert Settings.get_discovery_task_timeout() == 60
+    end
+  end
+
+  describe "get_discovery_prompt/0" do
+    test "returns nil when no custom prompt is set" do
+      assert Settings.get_discovery_prompt() == nil
+    end
+
+    test "returns nil when prompt default is empty string" do
+      # The default for discovery_prompt is "", which should return nil
+      Settings.delete_setting("discovery_prompt")
+      assert Settings.get_discovery_prompt() == nil
+    end
+
+    test "returns the custom prompt when set" do
+      {:ok, _} = Settings.update_setting("discovery_prompt", "Analyze {{project_name}}")
+      assert Settings.get_discovery_prompt() == "Analyze {{project_name}}"
+    end
+  end
+
+  describe "delete_setting/1" do
+    test "deletes an existing setting" do
+      {:ok, _} = Settings.update_setting("test_delete_key", "value")
+      assert Settings.get("test_delete_key") == "value"
+
+      assert :ok = Settings.delete_setting("test_delete_key")
+      assert Settings.get("test_delete_key") == nil
+    end
+
+    test "returns :ok for non-existent key" do
+      assert :ok = Settings.delete_setting("nonexistent_key")
+    end
+  end
+
   describe "ensure_defaults/0" do
     test "creates default settings when none exist" do
       # Clear existing settings

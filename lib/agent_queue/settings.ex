@@ -12,7 +12,9 @@ defmodule AgentQueue.Settings do
   @defaults %{
     "discovery_max_projects" => "10",
     "discovery_priority_mode" => "most_recently_modified",
-    "discovery_debug_mode" => "false"
+    "discovery_debug_mode" => "false",
+    "discovery_task_timeout" => "300",
+    "discovery_prompt" => ""
   }
 
   @priority_modes [
@@ -66,6 +68,16 @@ defmodule AgentQueue.Settings do
   end
 
   @doc """
+  Deletes a setting by key, reverting it to its default value.
+  """
+  def delete_setting(key) do
+    case Repo.get_by(Setting, key: key) do
+      nil -> :ok
+      setting -> Repo.delete(setting) && :ok
+    end
+  end
+
+  @doc """
   Gets all settings as a map.
   """
   def all_settings do
@@ -105,6 +117,23 @@ defmodule AgentQueue.Settings do
   end
 
   @doc """
+  Gets the per-project discovery task timeout in seconds.
+  """
+  def get_discovery_task_timeout do
+    get_int("discovery_task_timeout", 300)
+  end
+
+  @doc """
+  Gets the custom discovery prompt, or nil if using the default.
+  """
+  def get_discovery_prompt do
+    case get("discovery_prompt", "") do
+      "" -> nil
+      prompt -> prompt
+    end
+  end
+
+  @doc """
   Returns the list of available priority modes.
   """
   def priority_modes do
@@ -116,23 +145,28 @@ defmodule AgentQueue.Settings do
   """
   def ensure_defaults do
     Enum.each(@defaults, fn {key, value} ->
-      case Repo.get_by(Setting, key: key) do
-        nil ->
-          %Setting{key: key, value: value}
-          |> Setting.changeset(%{key: key, value: value})
-          |> Repo.insert()
-          |> case do
-            {:ok, _} ->
-              :ok
+      # Skip empty defaults — they represent "no value set" and would fail validation
+      if value == "" do
+        :ok
+      else
+        case Repo.get_by(Setting, key: key) do
+          nil ->
+            %Setting{key: key, value: value}
+            |> Setting.changeset(%{key: key, value: value})
+            |> Repo.insert()
+            |> case do
+              {:ok, _} ->
+                :ok
 
-            {:error, changeset} ->
-              Logger.error(
-                "Failed to insert default setting #{key}: #{inspect(changeset.errors)}"
-              )
-          end
+              {:error, changeset} ->
+                Logger.error(
+                  "Failed to insert default setting #{key}: #{inspect(changeset.errors)}"
+                )
+            end
 
-        _ ->
-          :ok
+          _ ->
+            :ok
+        end
       end
     end)
   end

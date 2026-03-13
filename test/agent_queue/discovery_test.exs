@@ -149,6 +149,218 @@ defmodule AgentQueue.DiscoveryTest do
     end
   end
 
+  describe "pi command timeout" do
+    setup do
+      temp_dir = System.tmp_dir!()
+
+      test_projects_dir =
+        Path.join(temp_dir, "test_timeout_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(test_projects_dir)
+
+      # Create a git project directory
+      project_path = Path.join(test_projects_dir, "timeout_project")
+      File.mkdir_p!(project_path)
+      File.mkdir_p!(Path.join(project_path, ".git"))
+
+      # Create a fast-responding script that outputs valid JSON
+      fast_script = Path.join(test_projects_dir, "fast_pi.sh")
+
+      File.write!(fast_script, """
+      #!/bin/bash
+      echo '[{"title": "Test task", "description": "A test", "priority": 5}]'
+      """)
+
+      File.chmod!(fast_script, 0o755)
+
+      # Create a slow script that sleeps longer than timeout
+      slow_script = Path.join(test_projects_dir, "slow_pi.sh")
+
+      File.write!(slow_script, """
+      #!/bin/bash
+      sleep 30
+      echo '[]'
+      """)
+
+      File.chmod!(slow_script, 0o755)
+
+      original_command = Application.get_env(:agent_queue, :pi_command)
+      original_dir = Application.get_env(:agent_queue, :projects_dir)
+
+      Application.put_env(:agent_queue, :projects_dir, test_projects_dir)
+
+      on_exit(fn ->
+        if original_command,
+          do: Application.put_env(:agent_queue, :pi_command, original_command),
+          else: Application.delete_env(:agent_queue, :pi_command)
+
+        if original_dir,
+          do: Application.put_env(:agent_queue, :projects_dir, original_dir),
+          else: Application.delete_env(:agent_queue, :projects_dir)
+
+        File.rm_rf!(test_projects_dir)
+      end)
+
+      %{
+        test_projects_dir: test_projects_dir,
+        project_path: project_path,
+        fast_script: fast_script,
+        slow_script: slow_script
+      }
+    end
+
+    test "times out when pi command exceeds timeout", %{
+      project_path: project_path,
+      slow_script: slow_script
+    } do
+      Application.put_env(:agent_queue, :pi_command, slow_script)
+      AgentQueue.Settings.update_setting("discovery_task_timeout", "1")
+
+      # Register the project
+      {:ok, _} = Discovery.scan_projects()
+      project = AgentQueue.Projects.get_project_by_path(project_path)
+
+      assert {:ok, 0} = Discovery.discover_tasks(project)
+    end
+
+    test "succeeds when pi command completes within timeout", %{
+      project_path: project_path,
+      fast_script: fast_script
+    } do
+      Application.put_env(:agent_queue, :pi_command, fast_script)
+      AgentQueue.Settings.update_setting("discovery_task_timeout", "30")
+
+      {:ok, _} = Discovery.scan_projects()
+      project = AgentQueue.Projects.get_project_by_path(project_path)
+
+      assert {:ok, 1} = Discovery.discover_tasks(project)
+    end
+
+    test "continues to next project after timeout", %{
+      test_projects_dir: test_projects_dir,
+      slow_script: slow_script,
+      fast_script: fast_script
+    } do
+      # Create a second project
+      project2_path = Path.join(test_projects_dir, "fast_project")
+      File.mkdir_p!(project2_path)
+      File.mkdir_p!(Path.join(project2_path, ".git"))
+
+      # Create a wrapper script that uses slow for first project, fast for second
+      wrapper_script = Path.join(test_projects_dir, "wrapper_pi.sh")
+
+      File.write!(wrapper_script, """
+      #!/bin/bash
+      if [[ "$PWD" == *"timeout_project"* ]]; then
+        exec #{slow_script} "$@"
+      else
+        exec #{fast_script} "$@"
+      fi
+      """)
+
+      File.chmod!(wrapper_script, 0o755)
+
+      Application.put_env(:agent_queue, :pi_command, wrapper_script)
+      AgentQueue.Settings.update_setting("discovery_task_timeout", "1")
+      AgentQueue.Settings.update_setting("discovery_max_projects", "10")
+
+      {:ok, _} = Discovery.scan_projects()
+
+      # discover_all_tasks should not hang — the slow project times out,
+      # and the fast project still gets discovered
+      assert {:ok, total} = Discovery.discover_all_tasks(max_time_seconds: 30)
+      assert total >= 1
+    end
+
+    test "reads timeout from settings with default fallback" do
+      # Default should be 300 seconds
+      assert AgentQueue.Settings.get_discovery_task_timeout() == 300
+
+      AgentQueue.Settings.update_setting("discovery_task_timeout", "60")
+      assert AgentQueue.Settings.get_discovery_task_timeout() == 60
+    end
+  end
+
+  describe "discovery prompt customization" do
+    test "build_discovery_prompt uses default when no custom prompt is set" do
+      AgentQueue.Settings.delete_setting("discovery_prompt")
+
+      # build_discovery_prompt is private, but we can test via build_pi_command_args
+      # which receives the prompt. We test the settings integration instead.
+      assert AgentQueue.Settings.get_discovery_prompt() == nil
+    end
+
+    test "build_discovery_prompt uses custom prompt with interpolation" do
+      custom_prompt = "Scan {{project_name}} at {{project_path}} for issues"
+      {:ok, _} = AgentQueue.Settings.update_setting("discovery_prompt", custom_prompt)
+
+      on_exit(fn -> AgentQueue.Settings.delete_setting("discovery_prompt") end)
+
+      assert AgentQueue.Settings.get_discovery_prompt() == custom_prompt
+    end
+
+    test "custom prompt is sent to pi agent", %{} do
+      temp_dir = System.tmp_dir!()
+
+      test_projects_dir =
+        Path.join(temp_dir, "test_prompt_#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(test_projects_dir)
+
+      project_path = Path.join(test_projects_dir, "my_project")
+      File.mkdir_p!(project_path)
+      File.mkdir_p!(Path.join(project_path, ".git"))
+
+      # Create a script that writes the received prompt to a file, then outputs valid JSON
+      prompt_file = Path.join(test_projects_dir, "received_prompt.txt")
+
+      echo_script = Path.join(test_projects_dir, "echo_pi.sh")
+
+      File.write!(echo_script, """
+      #!/bin/bash
+      # Write the last argument (prompt) to a file for verification
+      echo "${@: -1}" > #{prompt_file}
+      echo '[{"title": "Task", "description": "desc", "priority": 5}]'
+      """)
+
+      File.chmod!(echo_script, 0o755)
+
+      original_command = Application.get_env(:agent_queue, :pi_command)
+      original_dir = Application.get_env(:agent_queue, :projects_dir)
+
+      Application.put_env(:agent_queue, :pi_command, echo_script)
+      Application.put_env(:agent_queue, :projects_dir, test_projects_dir)
+
+      custom_prompt = "Scan {{project_name}} at {{project_path}} for issues"
+      {:ok, _} = AgentQueue.Settings.update_setting("discovery_prompt", custom_prompt)
+
+      on_exit(fn ->
+        if original_command,
+          do: Application.put_env(:agent_queue, :pi_command, original_command),
+          else: Application.delete_env(:agent_queue, :pi_command)
+
+        if original_dir,
+          do: Application.put_env(:agent_queue, :projects_dir, original_dir),
+          else: Application.delete_env(:agent_queue, :projects_dir)
+
+        AgentQueue.Settings.delete_setting("discovery_prompt")
+        File.rm_rf!(test_projects_dir)
+      end)
+
+      {:ok, _} = Discovery.scan_projects()
+      project = AgentQueue.Projects.get_project_by_path(project_path)
+
+      assert {:ok, 1} = Discovery.discover_tasks(project)
+
+      # Verify the prompt was interpolated and sent to the pi command
+      received_prompt = File.read!(prompt_file) |> String.trim()
+      assert String.contains?(received_prompt, "my_project")
+      assert String.contains?(received_prompt, project_path)
+      refute String.contains?(received_prompt, "{{project_name}}")
+      refute String.contains?(received_prompt, "{{project_path}}")
+    end
+  end
+
   describe "scan_projects/1 with settings" do
     setup do
       # Create a temporary directory with test projects

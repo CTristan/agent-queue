@@ -271,6 +271,7 @@ defmodule AgentQueue.Discovery do
           |> Enum.count(fn {status, _} -> status == :ok end)
 
         Projects.update_last_scanned(project)
+        broadcast_log(:info, "Created #{created} tasks for #{project.name}")
         created
 
       {:error, reason} ->
@@ -283,8 +284,21 @@ defmodule AgentQueue.Discovery do
   defp return_zero, do: 0
 
   defp build_discovery_prompt(project) do
+    template =
+      case Settings.get_discovery_prompt() do
+        nil -> default_discovery_prompt_template()
+        custom -> custom
+      end
+
+    interpolate_prompt(template, project)
+  end
+
+  @doc """
+  Returns the default discovery prompt template with {{project_path}} and {{project_name}} placeholders.
+  """
+  def default_discovery_prompt_template do
     """
-    You are a code analysis assistant. Examine the project at #{project.path} and identify potential tasks that could be automated.
+    You are a code analysis assistant. Examine the project at {{project_path}} and identify potential tasks that could be automated.
 
     Look for:
     1. GitHub issues (if `gh` CLI is available)
@@ -303,24 +317,61 @@ defmodule AgentQueue.Discovery do
 
     Be selective and only suggest high-quality, actionable tasks. Aim for 3-5 tasks maximum.
     """
+    |> String.trim()
+  end
+
+  defp interpolate_prompt(template, project) do
+    template
+    |> String.replace("{{project_path}}", project.path)
+    |> String.replace("{{project_name}}", project.name)
   end
 
   defp run_pi_discovery(project_path, prompt) do
     {command, args} = build_pi_command_args(prompt)
+    timeout_ms = get_discovery_timeout_ms()
+    timeout_s = div(timeout_ms, 1000)
 
-    case System.cmd(command, args,
-           cd: project_path,
-           stderr_to_stdout: false
-         ) do
-      {stdout, 0} ->
+    # Log the full command so users can reproduce/debug
+    cmd_display = Enum.join([command | Enum.take(args, length(args) - 1)], " ")
+    broadcast_log(:debug, "Command: #{cmd_display} <prompt>")
+    broadcast_log(:debug, "Working directory: #{project_path}")
+    broadcast_log(:info, "Running pi agent (timeout: #{timeout_s}s)...")
+
+    task =
+      Task.async(fn ->
+        System.cmd(command, args, cd: project_path, stderr_to_stdout: false)
+      end)
+
+    case Task.yield(task, timeout_ms) || Task.shutdown(task) do
+      {:ok, {stdout, 0}} ->
+        broadcast_log(:info, "pi agent completed (#{byte_size(stdout)} bytes output)")
         parse_discovery_output(stdout)
 
-      {stderr, exit_code} ->
+      {:ok, {stderr, exit_code}} ->
         Logger.error("pi discovery failed with exit code #{exit_code}: #{stderr}")
-        broadcast_log(:error, "pi discovery failed with exit code #{exit_code}")
-
+        broadcast_log(:error, "pi agent failed (exit code #{exit_code})")
+        broadcast_log(:debug, "stderr: #{String.slice(stderr, 0, 500)}")
         {:error, {:command_failed, exit_code, stderr}}
+
+      nil ->
+        Logger.error("pi discovery timed out after #{timeout_s}s")
+
+        broadcast_log(
+          :error,
+          "pi agent timed out after #{timeout_s}s — try running the command manually to debug"
+        )
+
+        broadcast_log(
+          :info,
+          "Tip: run `#{cmd_display} \"<prompt>\"` in #{project_path} to test"
+        )
+
+        {:error, :timeout}
     end
+  end
+
+  defp get_discovery_timeout_ms do
+    Settings.get_discovery_task_timeout() * 1000
   end
 
   @doc false

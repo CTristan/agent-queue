@@ -4,20 +4,26 @@ defmodule AgentQueueWeb.SettingsLive do
   """
   use AgentQueueWeb, :live_view
 
-  alias AgentQueue.Settings
+  alias AgentQueue.{Discovery, Settings}
 
   @impl true
   def mount(_, _, socket) do
     settings = Settings.all_settings_with_defaults()
+    default_prompt = Discovery.default_discovery_prompt_template()
+    prompt = effective_prompt(settings["discovery_prompt"], default_prompt)
 
     socket =
       socket
       |> assign(:settings, settings)
+      |> assign(:default_prompt, default_prompt)
       |> assign(:form_params, %{
         "discovery_max_projects" => settings["discovery_max_projects"],
         "discovery_priority_mode" => settings["discovery_priority_mode"],
-        "discovery_debug_mode" => settings["discovery_debug_mode"]
+        "discovery_debug_mode" => settings["discovery_debug_mode"],
+        "discovery_task_timeout" => settings["discovery_task_timeout"],
+        "discovery_prompt" => prompt
       })
+      |> assign(:using_default_prompt, prompt == default_prompt)
       |> assign(:changeset, nil)
       |> assign(:save_message, nil)
       |> assign(:save_message_kind, nil)
@@ -32,54 +38,101 @@ defmodule AgentQueueWeb.SettingsLive do
 
   @impl true
   def handle_event("save_settings", %{"settings" => params}, socket) do
-    # Validate max_projects is a positive integer
-    case Integer.parse(params["discovery_max_projects"]) do
-      {max_projects, ""} when max_projects > 0 ->
-        # Validate priority_mode
-        if params["discovery_priority_mode"] in Settings.priority_modes() do
-          # Update settings
-          {:ok, _} =
-            Settings.update_setting("discovery_max_projects", params["discovery_max_projects"])
+    errors = validate_settings(params)
 
-          {:ok, _} =
-            Settings.update_setting("discovery_priority_mode", params["discovery_priority_mode"])
+    if errors == [] do
+      {:ok, _} =
+        Settings.update_setting("discovery_max_projects", params["discovery_max_projects"])
 
-          debug_mode = if params["discovery_debug_mode"] == "true", do: "true", else: "false"
-          {:ok, _} = Settings.update_setting("discovery_debug_mode", debug_mode)
+      {:ok, _} =
+        Settings.update_setting("discovery_priority_mode", params["discovery_priority_mode"])
 
-          settings = Settings.all_settings_with_defaults()
+      debug_mode = if params["discovery_debug_mode"] == "true", do: "true", else: "false"
+      {:ok, _} = Settings.update_setting("discovery_debug_mode", debug_mode)
 
-          socket =
-            socket
-            |> assign(:settings, settings)
-            |> assign(:form_params, %{
-              "discovery_max_projects" => params["discovery_max_projects"],
-              "discovery_priority_mode" => params["discovery_priority_mode"],
-              "discovery_debug_mode" => debug_mode
-            })
-            |> assign(:save_message, "Settings saved successfully")
-            |> assign(:save_message_kind, :info)
+      task_timeout = params["discovery_task_timeout"] || "300"
+      {:ok, _} = Settings.update_setting("discovery_task_timeout", task_timeout)
 
-          {:noreply, socket}
-        else
-          socket =
-            socket
-            |> assign(:save_message, "Invalid priority mode")
-            |> assign(:save_message_kind, :error)
+      discovery_prompt = String.trim(params["discovery_prompt"] || "")
+      default_prompt = socket.assigns.default_prompt
 
-          {:noreply, socket}
-        end
+      if discovery_prompt == "" or discovery_prompt == default_prompt do
+        Settings.delete_setting("discovery_prompt")
+      else
+        {:ok, _} = Settings.update_setting("discovery_prompt", discovery_prompt)
+      end
 
-      _ ->
-        socket =
-          socket
-          |> assign(:save_message, "Max projects must be a positive integer")
-          |> assign(:save_message_kind, :error)
+      effective = effective_prompt(discovery_prompt, default_prompt)
+      settings = Settings.all_settings_with_defaults()
 
-        {:noreply, socket}
+      socket =
+        socket
+        |> assign(:settings, settings)
+        |> assign(:form_params, %{
+          "discovery_max_projects" => params["discovery_max_projects"],
+          "discovery_priority_mode" => params["discovery_priority_mode"],
+          "discovery_debug_mode" => debug_mode,
+          "discovery_task_timeout" => task_timeout,
+          "discovery_prompt" => effective
+        })
+        |> assign(:using_default_prompt, effective == default_prompt)
+        |> assign(:save_message, "Settings saved successfully")
+        |> assign(:save_message_kind, :info)
+
+      {:noreply, socket}
+    else
+      {:noreply,
+       assign(socket,
+         save_message: Enum.join(errors, ". "),
+         save_message_kind: :error
+       )}
     end
   end
 
+  @impl true
+  def handle_event("reset_prompt", _, socket) do
+    default_prompt = socket.assigns.default_prompt
+    Settings.delete_setting("discovery_prompt")
+
+    form_params = Map.put(socket.assigns.form_params, "discovery_prompt", default_prompt)
+
+    {:noreply,
+     socket
+     |> assign(:form_params, form_params)
+     |> assign(:using_default_prompt, true)
+     |> assign(:save_message, "Prompt reset to default")
+     |> assign(:save_message_kind, :info)}
+  end
+
+  defp effective_prompt(prompt, default) do
+    trimmed = String.trim(prompt || "")
+    if trimmed == "", do: default, else: trimmed
+  end
+
+  defp validate_settings(params) do
+    errors = []
+
+    errors =
+      case Integer.parse(params["discovery_max_projects"]) do
+        {n, ""} when n > 0 -> errors
+        _ -> errors ++ ["Max projects must be a positive integer"]
+      end
+
+    errors =
+      case Integer.parse(params["discovery_task_timeout"] || "300") do
+        {n, ""} when n > 0 -> errors
+        _ -> errors ++ ["Task timeout must be a positive integer"]
+      end
+
+    errors =
+      if params["discovery_priority_mode"] in Settings.priority_modes() do
+        errors
+      else
+        errors ++ ["Invalid priority mode"]
+      end
+
+    errors
+  end
 
   defp priority_mode_label("alphabetical"), do: "Alphabetical (A-Z)"
   defp priority_mode_label("most_recently_modified"), do: "Most Recently Modified"

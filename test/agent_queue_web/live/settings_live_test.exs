@@ -60,4 +60,81 @@ defmodule AgentQueueWeb.SettingsLiveTest do
       refute Settings.get("discovery_max_projects") == "abc"
     end
   end
+
+  describe "task timeout setting" do
+    test "persists timeout value", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      html =
+        view
+        |> form("form", %{
+          "settings" => %{
+            "discovery_max_projects" => "10",
+            "discovery_priority_mode" => "most_recently_modified",
+            "discovery_task_timeout" => "120"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Settings saved successfully"
+      assert Settings.get("discovery_task_timeout") == "120"
+    end
+
+    test "shows error for non-numeric timeout", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      html =
+        view
+        |> form("form", %{
+          "settings" => %{
+            "discovery_max_projects" => "10",
+            "discovery_priority_mode" => "most_recently_modified",
+            "discovery_task_timeout" => "abc"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Task timeout must be a positive integer"
+    end
+  end
+
+  describe "discovery prompt setting" do
+    test "persists custom prompt", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      html =
+        view
+        |> form("form", %{
+          "settings" => %{
+            "discovery_max_projects" => "10",
+            "discovery_priority_mode" => "most_recently_modified",
+            "discovery_prompt" => "Custom prompt for {{project_name}}"
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Settings saved successfully"
+      assert Settings.get_discovery_prompt() == "Custom prompt for {{project_name}}"
+    end
+
+    test "clears prompt when set to empty", %{conn: conn} do
+      {:ok, _} = Settings.update_setting("discovery_prompt", "old prompt")
+
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      html =
+        view
+        |> form("form", %{
+          "settings" => %{
+            "discovery_max_projects" => "10",
+            "discovery_priority_mode" => "most_recently_modified",
+            "discovery_prompt" => ""
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Settings saved successfully"
+      assert Settings.get_discovery_prompt() == nil
+    end
+  end
 end

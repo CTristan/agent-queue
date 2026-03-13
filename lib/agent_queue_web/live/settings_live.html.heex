@@ -43,6 +43,31 @@
 
           <div class="divider"></div>
           
+<!-- Task Timeout -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Per-Project Task Timeout (seconds)</span>
+              <span class="label-text-alt">
+                How long to wait for the pi agent before timing out
+              </span>
+            </label>
+            <input
+              type="number"
+              name="settings[discovery_task_timeout]"
+              value={@form_params["discovery_task_timeout"]}
+              min="10"
+              max="3600"
+              class="input input-bordered w-full max-w-xs"
+            />
+            <label class="label">
+              <span class="label-text-alt">
+                If the pi agent takes longer than this, it will be stopped and discovery will move to the next project. Default: 300 seconds (5 minutes).
+              </span>
+            </label>
+          </div>
+
+          <div class="divider"></div>
+          
 <!-- Priority Mode -->
           <div class="form-control">
             <label class="label">
@@ -92,6 +117,40 @@
                   Show debug-level messages in discovery terminal logs. Useful for troubleshooting discovery issues.
                 </p>
               </div>
+            </label>
+          </div>
+          <div class="divider"></div>
+          
+<!-- Discovery Prompt -->
+          <div class="form-control">
+            <label class="label">
+              <span class="label-text font-medium">Discovery Prompt</span>
+              <span class="label-text-alt flex items-center gap-2">
+                <span :if={@using_default_prompt} class="badge badge-ghost badge-sm">
+                  Default
+                </span>
+                <span :if={!@using_default_prompt} class="badge badge-primary badge-sm">
+                  Custom
+                </span>
+              </span>
+            </label>
+            <textarea
+              name="settings[discovery_prompt]"
+              class="textarea textarea-bordered h-40 font-mono text-sm"
+              placeholder="Enter a custom prompt. Use {{project_path}} and {{project_name}} as placeholders."
+            >{@form_params["discovery_prompt"]}</textarea>
+            <label class="label">
+              <span class="label-text-alt">
+                {"The prompt must instruct the agent to output a JSON array of tasks with \"title\", \"description\", and \"priority\" fields. Use {{project_path}} and {{project_name}} as placeholders."}
+              </span>
+              <button
+                :if={!@using_default_prompt}
+                type="button"
+                phx-click="reset_prompt"
+                class="btn btn-ghost btn-xs"
+              >
+                Reset to Default
+              </button>
             </label>
           </div>
         </div>

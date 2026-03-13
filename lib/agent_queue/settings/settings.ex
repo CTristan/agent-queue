@@ -18,7 +18,7 @@ defmodule AgentQueue.Settings.Setting do
     |> cast(attrs, [:key, :value])
     |> validate_required([:key, :value])
     |> validate_length(:key, max: 255)
-    |> validate_length(:value, max: 1000)
+    |> validate_length(:value, max: 5000)
     |> unique_constraint(:key)
   end
 end
